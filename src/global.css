@@ -1,3 +1,33 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/**
+ * Khata design tokens.
+ *
+ * Values are space-separated RGB triplets rather than hex so Tailwind's
+ * `<alpha-value>` placeholder works — that's what lets the insights bars use
+ * `bg-ink/40` as an ink-density ramp instead of introducing a second palette.
+ *
+ * Dark values are overrides under `.dark:root`, which NativeWind toggles via
+ * `colorScheme.set()` because `darkMode` is set to "class".
+ */
+@layer base {
+  :root {
+    --paper: 242 245 241;
+    --row-alt: 220 230 220;
+    --ink: 27 42 35;
+    --ink-muted: 90 110 100;
+    --rule: 185 203 192;
+    --alert: 166 50 30;
+  }
+
+  .dark:root {
+    --paper: 16 22 20;
+    --row-alt: 22 30 26;
+    --ink: 221 231 224;
+    --ink-muted: 138 158 146;
+    --rule: 42 56 48;
+    --alert: 226 102 76;
+  }
+}

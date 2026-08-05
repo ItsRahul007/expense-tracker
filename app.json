@@ -29,11 +29,21 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#F2F5F1",
+          "dark": {
+            "backgroundColor": "#101614"
+          },
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
           }
+        }
+      ],
+      "expo-sharing",
+      [
+        "expo-file-system",
+        {
+          "enableFileSharing": true
         }
       ]
     ],
