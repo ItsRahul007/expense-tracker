@@ -4,12 +4,19 @@ import {
   PlusJakartaSans_600SemiBold,
   PlusJakartaSans_700Bold,
 } from "@expo-google-fonts/plus-jakarta-sans";
-import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { colorScheme as nativewindColorScheme, useColorScheme } from "nativewind";
+import {
+  colorScheme as nativewindColorScheme,
+  useColorScheme,
+} from "nativewind";
 import { useEffect } from "react";
 import { useColorScheme as useSystemColorScheme } from "react-native";
 
@@ -31,7 +38,8 @@ export default function RootLayout() {
     PlusJakartaSans_700Bold,
   });
 
-  const { data: themePreference, isPending: themePending } = useSetting("theme");
+  const { data: themePreference, isPending: themePending } =
+    useSetting("theme");
   const systemScheme = useSystemColorScheme();
 
   /**
@@ -76,7 +84,11 @@ export default function RootLayout() {
 
   if (!ready) return null;
 
-  return <RootNavigator />;
+  return (
+    <AppDataProviders>
+      <RootNavigator />
+    </AppDataProviders>
+  );
 }
 
 function RootNavigator() {
@@ -101,32 +113,30 @@ function RootNavigator() {
 
   return (
     <ThemeProvider value={navTheme}>
-      <AppDataProviders>
-        <StatusBar style={dark ? "light" : "dark"} />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: palette.bg },
+      <StatusBar style={dark ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: palette.bg },
+        }}
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="add"
+          options={{
+            presentation: "formSheet",
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 24,
+            // Nearly full height: the form has an amount field, a category
+            // grid, date chips and a note, and a short sheet would make the
+            // grid scroll immediately.
+            sheetAllowedDetents: [0.92],
           }}
-        >
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="add"
-            options={{
-              presentation: "formSheet",
-              sheetGrabberVisible: true,
-              sheetCornerRadius: 24,
-              // Nearly full height: the form has an amount field, a category
-              // grid, date chips and a note, and a short sheet would make the
-              // grid scroll immediately.
-              sheetAllowedDetents: [0.92],
-            }}
-          />
-          <Stack.Screen name="search" options={{ presentation: "modal" }} />
-          <Stack.Screen name="categories" options={{ presentation: "modal" }} />
-          <Stack.Screen name="transaction/[id]" />
-        </Stack>
-      </AppDataProviders>
+        />
+        <Stack.Screen name="search" options={{ presentation: "modal" }} />
+        <Stack.Screen name="categories" options={{ presentation: "modal" }} />
+        <Stack.Screen name="transaction/[id]" />
+      </Stack>
     </ThemeProvider>
   );
 }

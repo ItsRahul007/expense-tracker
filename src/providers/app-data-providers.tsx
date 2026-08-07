@@ -36,6 +36,39 @@
  *    throws away the cache.
  */
 
+import { DATABASE_NAME } from "@/constants/db";
+import migrations from "@/db/migrations/migrations";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { drizzle } from "drizzle-orm/expo-sqlite";
+import { migrate } from "drizzle-orm/expo-sqlite/migrator";
+import { SQLiteProvider } from "expo-sqlite";
+import React, { Suspense } from "react";
+import { ActivityIndicator } from "react-native";
+
+const queryClient = new QueryClient();
+
 export function AppDataProviders({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <Suspense fallback={<ActivityIndicator size="large" />}>
+      <SQLiteProvider
+        databaseName={DATABASE_NAME}
+        options={{ enableChangeListener: true }}
+        useSuspense
+        onInit={async (db) => {
+          try {
+            await db.execAsync(`PRAGMA foreign_keys = ON;`);
+            const drizzleDB = drizzle(db);
+            await migrate(drizzleDB, migrations);
+          } catch (error) {
+            console.error("DB connection error:", error);
+            throw error;
+          }
+        }}
+      >
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </SQLiteProvider>
+    </Suspense>
+  );
 }
