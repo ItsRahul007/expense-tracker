@@ -86,13 +86,13 @@ the file:
 
 ## 2. Migrations & seeding
 
-- [ ] Generate the initial migration with `drizzle-kit`.
-- [ ] Run migrations on boot (`onInit` or the Drizzle hook — your call).
+- [x] Generate the initial migration with `drizzle-kit`.
+- [x] Run migrations on boot (`onInit` or the Drizzle hook — your call).
 - [ ] Seed the eight default categories. The UI expects `icon` to be a valid **Ionicons**
       name and `color` to be a hex string; `src/queries/mock-store.ts` has the exact eight
       I used, and `src/constants/category-options.ts` has the curated icon/colour sets the
       custom-category editor offers.
-- [ ] Handle failure. A migration that throws on a device holding real data is the worst
+- [x] Handle failure. A migration that throws on a device holding real data is the worst
       outcome in a local-only app, and the default user experience is a white screen.
 
 **Decide, and be able to say why:** is seeding a migration, or app code that checks for an
@@ -102,9 +102,9 @@ empty table? They behave differently on reinstall and after a user deletes a cat
 
 ## 3. Providers
 
-- [ ] Fill in `src/providers/app-data-providers.tsx` — it's a pass-through right now with
+- [x] Fill in `src/providers/app-data-providers.tsx` — it's a pass-through right now with
       notes in it. `SQLiteProvider` wrapping `QueryClientProvider` wrapping `children`.
-- [ ] `queryClient` must be a **stable instance** — module scope or a `useState`
+- [x] `queryClient` must be a **stable instance** — module scope or a `useState`
       initialiser, never inline in render, or every re-render throws away the cache.
 - [ ] **Readiness gating.** `src/app/_layout.tsx` already holds the splash screen until
       fonts load and the theme setting resolves. Migrations are the third gate — if the app

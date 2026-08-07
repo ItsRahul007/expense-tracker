@@ -36,6 +36,7 @@
  *    throws away the cache.
  */
 
+import { ErrorBoundary } from "@/components/error-boundary";
 import { DATABASE_NAME } from "@/constants/db";
 import migrations from "@/db/migrations/migrations";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -49,26 +50,28 @@ const queryClient = new QueryClient();
 
 export function AppDataProviders({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense fallback={<ActivityIndicator size="large" />}>
-      <SQLiteProvider
-        databaseName={DATABASE_NAME}
-        options={{ enableChangeListener: true }}
-        useSuspense
-        onInit={async (db) => {
-          try {
-            await db.execAsync(`PRAGMA foreign_keys = ON;`);
-            const drizzleDB = drizzle(db);
-            await migrate(drizzleDB, migrations);
-          } catch (error) {
-            console.error("DB connection error:", error);
-            throw error;
-          }
-        }}
-      >
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
-      </SQLiteProvider>
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<ActivityIndicator size="large" />}>
+        <SQLiteProvider
+          databaseName={DATABASE_NAME}
+          options={{ enableChangeListener: true }}
+          useSuspense
+          onInit={async (db) => {
+            try {
+              await db.execAsync(`PRAGMA foreign_keys = ON;`);
+              const drizzleDB = drizzle(db);
+              await migrate(drizzleDB, migrations);
+            } catch (error) {
+              console.error("DB connection error:", error);
+              throw error;
+            }
+          }}
+        >
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        </SQLiteProvider>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
