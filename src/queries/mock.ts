@@ -29,10 +29,9 @@ import type {
   TxFilters,
 } from "@/types/domain";
 
-import * as store from "./mock-store";
+import { LATENCY_MS } from "@/constants/common";
 import type { MockState } from "./mock-store";
-
-const LATENCY_MS = 140;
+import * as store from "./mock-store";
 
 /** Keys whose first "fetch" has already resolved. Module-level so navigating
  *  back to a screen doesn't re-show a pending state, matching how a warm cache
@@ -44,8 +43,15 @@ const warmed = new Set<string>();
  * `store.getState()` — that keeps the subscribed value and the computed value
  * provably the same snapshot, and avoids a stale-closure dependency problem.
  */
-function useMockQuery<T>(key: string, select: (state: MockState) => T): QueryResult<T> {
-  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+function useMockQuery<T>(
+  key: string,
+  select: (state: MockState) => T,
+): QueryResult<T> {
+  const state = useSyncExternalStore(
+    store.subscribe,
+    store.getState,
+    store.getState,
+  );
   const [ready, setReady] = useState(() => warmed.has(key));
 
   useEffect(() => {
@@ -68,7 +74,9 @@ function useMockQuery<T>(key: string, select: (state: MockState) => T): QueryRes
   };
 }
 
-function useMockMutation<TArgs>(run: (args: TArgs) => void): MutationResult<TArgs> {
+function useMockMutation<TArgs>(
+  run: (args: TArgs) => void,
+): MutationResult<TArgs> {
   const [isPending, setIsPending] = useState(false);
 
   const mutateAsync = useCallback(
@@ -100,12 +108,19 @@ function matchesFilters(
 
   if (filters.text) {
     const needle = filters.text.toLowerCase();
-    const haystack = `${tx.note ?? ""} ${categoryName(tx.categoryId)}`.toLowerCase();
+    const haystack =
+      `${tx.note ?? ""} ${categoryName(tx.categoryId)}`.toLowerCase();
     if (!haystack.includes(needle)) return false;
   }
-  if (filters.categoryIds?.length && !filters.categoryIds.includes(tx.categoryId)) return false;
-  if (filters.minMinor != null && tx.amountMinor < filters.minMinor) return false;
-  if (filters.maxMinor != null && tx.amountMinor > filters.maxMinor) return false;
+  if (
+    filters.categoryIds?.length &&
+    !filters.categoryIds.includes(tx.categoryId)
+  )
+    return false;
+  if (filters.minMinor != null && tx.amountMinor < filters.minMinor)
+    return false;
+  if (filters.maxMinor != null && tx.amountMinor > filters.maxMinor)
+    return false;
   if (filters.from != null && tx.occurredAt < filters.from) return false;
   if (filters.to != null && tx.occurredAt >= filters.to) return false;
 
@@ -135,7 +150,8 @@ export function useTransactions(
     const bounds = month ? monthRange(month) : null;
 
     return transactions.filter((tx) => {
-      if (bounds && (tx.occurredAt < bounds.from || tx.occurredAt >= bounds.to)) return false;
+      if (bounds && (tx.occurredAt < bounds.from || tx.occurredAt >= bounds.to))
+        return false;
       return matchesFilters(tx, filters, nameOf);
     });
   });
@@ -151,7 +167,10 @@ export function useMonthSummary(month: Month): QueryResult<MonthSummary> {
     for (const tx of transactions) {
       if (tx.occurredAt < from || tx.occurredAt >= to) continue;
       totalMinor += tx.amountMinor;
-      totals.set(tx.categoryId, (totals.get(tx.categoryId) ?? 0) + tx.amountMinor);
+      totals.set(
+        tx.categoryId,
+        (totals.get(tx.categoryId) ?? 0) + tx.amountMinor,
+      );
     }
 
     return {
@@ -174,28 +193,40 @@ export function useMonthTrend(months: Month[]): QueryResult<MonthPoint[]> {
       if (totals.has(m)) totals.set(m, (totals.get(m) ?? 0) + tx.amountMinor);
     }
 
-    return months.map((month) => ({ month, totalMinor: totals.get(month) ?? 0 }));
+    return months.map((month) => ({
+      month,
+      totalMinor: totals.get(month) ?? 0,
+    }));
   });
 }
 
 /** Budgets for a month joined with actual spend, ordered by category. */
 export function useBudgets(month: Month): QueryResult<BudgetStatus[]> {
-  return useMockQuery(`budget:${month}`, ({ budgets, transactions, categories }) => {
-    const { from, to } = monthRange(month);
+  return useMockQuery(
+    `budget:${month}`,
+    ({ budgets, transactions, categories }) => {
+      const { from, to } = monthRange(month);
 
-    const spent = new Map<ID, number>();
-    for (const tx of transactions) {
-      if (tx.occurredAt < from || tx.occurredAt >= to) continue;
-      spent.set(tx.categoryId, (spent.get(tx.categoryId) ?? 0) + tx.amountMinor);
-    }
+      const spent = new Map<ID, number>();
+      for (const tx of transactions) {
+        if (tx.occurredAt < from || tx.occurredAt >= to) continue;
+        spent.set(
+          tx.categoryId,
+          (spent.get(tx.categoryId) ?? 0) + tx.amountMinor,
+        );
+      }
 
-    const order = new Map(categories.map((c) => [c.id, c.sortOrder]));
+      const order = new Map(categories.map((c) => [c.id, c.sortOrder]));
 
-    return budgets
-      .filter((b) => b.month === month)
-      .map((b) => ({ ...b, spentMinor: spent.get(b.categoryId) ?? 0 }))
-      .sort((a, b) => (order.get(a.categoryId) ?? 0) - (order.get(b.categoryId) ?? 0));
-  });
+      return budgets
+        .filter((b) => b.month === month)
+        .map((b) => ({ ...b, spentMinor: spent.get(b.categoryId) ?? 0 }))
+        .sort(
+          (a, b) =>
+            (order.get(a.categoryId) ?? 0) - (order.get(b.categoryId) ?? 0),
+        );
+    },
+  );
 }
 
 export function useTransaction(id: ID): QueryResult<Transaction | null> {
@@ -205,7 +236,9 @@ export function useTransaction(id: ID): QueryResult<Transaction | null> {
   );
 }
 
-export function useSetting<K extends keyof Settings>(key: K): QueryResult<Settings[K]> {
+export function useSetting<K extends keyof Settings>(
+  key: K,
+): QueryResult<Settings[K]> {
   return useMockQuery(`setting:${key}`, ({ settings }) => settings[key]);
 }
 

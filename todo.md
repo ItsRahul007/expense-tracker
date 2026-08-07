@@ -106,7 +106,7 @@ empty table? They behave differently on reinstall and after a user deletes a cat
       notes in it. `SQLiteProvider` wrapping `QueryClientProvider` wrapping `children`.
 - [x] `queryClient` must be a **stable instance** — module scope or a `useState`
       initialiser, never inline in render, or every re-render throws away the cache.
-- [ ] **Readiness gating.** `src/app/_layout.tsx` already holds the splash screen until
+- [x] **Readiness gating.** `src/app/_layout.tsx` already holds the splash screen until
       fonts load and the theme setting resolves. Migrations are the third gate — if the app
       renders first, your opening query hits a table that doesn't exist. Export a readiness
       signal and the root layout will wait on it.

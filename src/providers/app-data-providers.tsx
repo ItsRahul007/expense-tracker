@@ -37,7 +37,7 @@
  */
 
 import { ErrorBoundary } from "@/components/error-boundary";
-import { DATABASE_NAME } from "@/constants/db";
+import { DATABASE_NAME } from "@/constants/common";
 import migrations from "@/db/migrations/migrations";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { drizzle } from "drizzle-orm/expo-sqlite";
