@@ -15,6 +15,20 @@
       "when": 1786103948017,
       "tag": "0001_seed_default_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786123266627,
+      "tag": "0002_flowery_falcon",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786123284696,
+      "tag": "0003_protect_default_categories",
+      "breakpoints": true
     }
   ]
 }

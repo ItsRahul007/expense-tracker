@@ -7,11 +7,14 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 /**
- * Seeded and user-created rows live in this same table with no flag
- * distinguishing them (see `0001_seed_default_categories.sql`). Deliberate:
- * nothing in the UI can edit or delete an existing category yet, so there's
- * nothing to protect a default *against*. Add an `isDefault` column when an
- * edit/delete affordance actually ships, not before.
+ * `isDefault` exists for exactly one purpose: a trigger (see
+ * `0003_protect_default_categories.sql`) blocks `DELETE` on rows where it's
+ * true, so the 8 seeded categories survive even a row deleted directly in
+ * Drizzle Studio, not just through app code. It does *not* guard edits —
+ * nothing in the UI can edit an existing category yet (see
+ * `useUpsertCategory`), so there's nothing to protect against there.
+ * Deliberately absent from `Category` in `src/types/domain.ts`: it's a
+ * storage-layer concern the UI never needs to branch on.
  */
 const category = sqliteTable("categories", {
   id: text("id").primaryKey(),
@@ -19,6 +22,9 @@ const category = sqliteTable("categories", {
   icon: text("icon").notNull(),
   color: text("color").notNull(),
   sortOrder: integer("sort_order").notNull(),
+  isDefault: integer("is_default", { mode: "boolean" })
+    .notNull()
+    .default(false),
 });
 
 const transaction = sqliteTable(

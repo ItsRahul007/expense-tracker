@@ -78,7 +78,18 @@ export function useCategories(): QueryResult<Category[]> {
 
   const { data, isPending, error } = useQuery<Category[]>({
     queryKey: ["category"],
-    queryFn: () => db.select().from(category).orderBy(category.sortOrder).all(),
+    queryFn: () =>
+      db
+        .select({
+          id: category.id,
+          name: category.name,
+          icon: category.icon,
+          color: category.color,
+          sortOrder: category.sortOrder,
+        })
+        .from(category)
+        .orderBy(category.sortOrder)
+        .all(),
   });
 
   return { data, isPending, error };
