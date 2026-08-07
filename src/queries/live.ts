@@ -8,7 +8,7 @@ import {
   TxFilters,
 } from "@/types/domain";
 import { useQuery } from "@tanstack/react-query";
-import { and, desc, gte, inArray, like, lte, SQL, sql } from "drizzle-orm";
+import { and, desc, gte, inArray, like, lt, lte, SQL, sql } from "drizzle-orm";
 
 import { Month, monthRange } from "@/lib/month";
 import { useDrizzle } from "./helper";
@@ -92,7 +92,7 @@ export function useMonthSummary(month: Month): QueryResult<MonthSummary> {
     queryFn: async () => {
       const { from, to } = monthRange(month);
 
-      const totalIncome = db
+      const transactions = db
         .select({
           total: transaction.amountMinor,
           categoryId: transaction.categoryId,
@@ -102,26 +102,23 @@ export function useMonthSummary(month: Month): QueryResult<MonthSummary> {
           and(
             gte(transaction.occurredAt, from),
             lte(transaction.occurredAt, to),
-            gte(transaction.amountMinor, 0),
           ),
         )
         .orderBy(desc(transaction.occurredAt))
         .all();
 
+      let totalMinor = 0;
+      const totals = new Map<string, number>();
+      for (const tx of transactions) {
+        totalMinor += tx.total;
+        totals.set(tx.categoryId, (totals.get(tx.categoryId) ?? 0) + tx.total);
+      }
+
       return {
-        totalMinor: totalIncome.reduce((sum, tx) => sum + tx.total, 0),
-        byCategory: totalIncome.reduce(
-          (acc, tx) => {
-            const existing = acc.find((c) => c.categoryId === tx.categoryId);
-            if (existing) {
-              existing.totalMinor += tx.total;
-            } else {
-              acc.push({ categoryId: tx.categoryId, totalMinor: tx.total });
-            }
-            return acc;
-          },
-          [] as { categoryId: string; totalMinor: number }[],
-        ),
+        totalMinor,
+        byCategory: [...totals.entries()]
+          .map(([categoryId, total]) => ({ categoryId, totalMinor: total }))
+          .sort((a, b) => b.totalMinor - a.totalMinor),
       };
     },
   });
@@ -141,28 +138,6 @@ export function useMonthTrend(months: Month[]): QueryResult<MonthPoint[]> {
     queryFn: async () => {
       const monthPoints: MonthPoint[] = [];
 
-      // for (const month of months) {
-      //   const { from, to } = monthRange(month);
-
-      //   const totalIncome = db
-      //     .select({
-      //       total: transaction.amountMinor,
-      //     })
-      //     .from(transaction)
-      //     .where(
-      //       and(
-      //         gte(transaction.occurredAt, from),
-      //         lte(transaction.occurredAt, to),
-      //         gte(transaction.amountMinor, 0),
-      //       ),
-      //     )
-      //     .orderBy(desc(transaction.occurredAt))
-      //     .all();
-
-      //   const totalMinor = totalIncome.reduce((sum, tx) => sum + tx.total, 0);
-      //   monthPoints.push({ month, totalMinor });
-      // }
-
       let overallFrom = Infinity;
       let overallTo = -Infinity;
 
@@ -174,19 +149,18 @@ export function useMonthTrend(months: Month[]): QueryResult<MonthPoint[]> {
 
       const rows = db
         .select({
-          month: sql<string>`strftime('%Y-%m', ${transaction.occurredAt} / 1000, 'unixepoch')`,
+          month: sql<string>`strftime('%Y-%m', ${transaction.occurredAt} / 1000, 'unixepoch', 'localtime')`,
           total: sql<number>`sum(${transaction.amountMinor})`,
         })
         .from(transaction)
         .where(
           and(
             gte(transaction.occurredAt, overallFrom),
-            lte(transaction.occurredAt, overallTo),
-            gte(transaction.amountMinor, 0),
+            lt(transaction.occurredAt, overallTo),
           ),
         )
         .groupBy(
-          sql`strftime('%Y-%m', ${transaction.occurredAt} / 1000, 'unixepoch')`,
+          sql`strftime('%Y-%m', ${transaction.occurredAt} / 1000, 'unixepoch', 'localtime')`,
         )
         .all();
 
