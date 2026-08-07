@@ -1,10 +1,23 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { Eyebrow, LedgerSheet, Rule, ScreenHeader } from "@/components/ledger";
+import { Button, Card, IconBadge, ScreenHeader, SectionTitle } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import { useCategories, useUpsertCategory } from "@/queries";
+
+/** A small curated set rather than the whole Ionicons library — enough to cover
+ *  ordinary spending without turning this into an icon browser. */
+const ICON_CHOICES = [
+  "restaurant", "cart", "car", "receipt", "fitness", "bag-handle",
+  "game-controller", "airplane", "gift", "paw", "school", "ellipsis-horizontal",
+];
+
+const COLOR_CHOICES = [
+  "#F97316", "#10B981", "#3B82F6", "#8B5CF6",
+  "#EC4899", "#F59E0B", "#06B6D4", "#6B7280",
+];
 
 export default function CategoriesScreen() {
   const palette = usePalette();
@@ -12,96 +25,126 @@ export default function CategoriesScreen() {
   const upsertCategory = useUpsertCategory();
 
   const [name, setName] = useState("");
-  const [code, setCode] = useState("");
+  const [icon, setIcon] = useState(ICON_CHOICES[0]);
+  const [color, setColor] = useState(COLOR_CHOICES[0]);
 
-  const canAdd = name.trim().length > 0 && code.trim().length >= 2;
+  const canAdd = name.trim().length > 0;
 
   const add = () => {
     if (!canAdd) return;
     upsertCategory.mutate({
-      id: `c-${code.trim().toLowerCase()}`,
+      id: `c-${name.trim().toLowerCase().replace(/\s+/g, "-")}`,
       name: name.trim(),
-      code: code.trim().toUpperCase().slice(0, 4),
+      icon,
+      color,
       sortOrder: (categories?.length ?? 0) + 1,
     });
     setName("");
-    setCode("");
+    setIcon(ICON_CHOICES[0]);
+    setColor(COLOR_CHOICES[0]);
   };
 
   return (
-    <View className="flex-1 bg-paper">
-      <ScreenHeader
-        title="Categories"
-        actions={[{ label: "Close", onPress: () => router.back() }]}
-      />
+    <View className="flex-1 bg-bg">
+      <ScreenHeader title="Categories" onBack={() => router.back()} />
 
-      <LedgerSheet>
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Card padded={false} className="overflow-hidden">
           {(categories ?? []).map((category, index) => (
             <View key={category.id}>
-              <Rule />
-              <View
-                className={`h-row flex-row items-center pl-4 pr-7 ${
-                  index % 2 === 1 ? "bg-row-alt" : ""
-                }`}
-              >
-                <Text className="font-sans-medium flex-1 text-row text-ink">
+              <View className="flex-row items-center gap-3 px-4 py-3">
+                <IconBadge icon={category.icon} color={category.color} />
+                <Text className="font-sans-medium flex-1 text-body text-fg">
                   {category.name}
                 </Text>
-                <Text className="font-mono-medium text-amount text-ink-muted">
-                  {category.code}
-                </Text>
               </View>
+              {index < (categories?.length ?? 0) - 1 ? (
+                <View className="ml-[68px] h-px bg-border" />
+              ) : null}
             </View>
           ))}
+        </Card>
 
-          <Rule />
-          <View className="h-10 justify-end pb-2 pl-4">
-            <Eyebrow>Add a category</Eyebrow>
-          </View>
-          <Rule />
+        <View className="mt-6">
+          <SectionTitle title="Add a category" />
+          <Card>
+            <View className="flex-row items-center gap-3">
+              <IconBadge icon={icon} color={color} size="lg" />
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="Category name"
+                placeholderTextColor={palette.muted}
+                className="font-sans-medium h-12 flex-1 rounded-xl border border-border bg-bg px-3 text-body text-fg"
+                style={{ minWidth: 0 }}
+              />
+            </View>
 
-          <View className="flex-row items-center pl-4 pr-7">
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Name"
-              placeholderTextColor={palette.inkMuted}
-              className="font-sans-medium h-12 flex-1 text-row text-ink"
-            />
-            <TextInput
-              value={code}
-              onChangeText={(next) => setCode(next.toUpperCase().slice(0, 4))}
-              placeholder="CODE"
-              placeholderTextColor={palette.inkMuted}
-              autoCapitalize="characters"
-              className="font-mono-medium h-12 w-16 text-right text-amount text-ink"
-            />
-          </View>
-          <Rule />
-
-          <Pressable
-            onPress={add}
-            disabled={!canAdd}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !canAdd }}
-            className="h-12 items-center justify-center"
-            style={({ pressed }) => ({ opacity: !canAdd ? 0.3 : pressed ? 0.5 : 1 })}
-          >
-            <Text className="font-sans-semibold text-eyebrow uppercase tracking-eyebrow text-ink">
-              Add category
+            <Text className="font-sans-medium mb-2 mt-5 text-label text-muted">
+              Icon
             </Text>
-          </Pressable>
+            <View className="flex-row flex-wrap gap-2">
+              {ICON_CHOICES.map((choice) => (
+                <Pressable
+                  key={choice}
+                  onPress={() => setIcon(choice)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Icon ${choice}`}
+                  accessibilityState={{ selected: icon === choice }}
+                  className={`h-11 w-11 items-center justify-center rounded-xl border ${
+                    icon === choice ? "border-accent bg-accent/10" : "border-border bg-bg"
+                  }`}
+                  style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+                >
+                  <Ionicons
+                    name={choice as never}
+                    size={19}
+                    color={icon === choice ? palette.accent : palette.muted}
+                  />
+                </Pressable>
+              ))}
+            </View>
 
-          <View className="px-4 pt-6">
-            <Text className="font-sans text-meta text-ink-muted">
-              Categories can be added but not deleted. Removing one that already
-              has entries attached needs a rule for where those entries go, and
-              that belongs in the data layer rather than here.
+            <Text className="font-sans-medium mb-2 mt-5 text-label text-muted">
+              Colour
             </Text>
-          </View>
-        </ScrollView>
-      </LedgerSheet>
+            <View className="flex-row flex-wrap gap-2.5">
+              {COLOR_CHOICES.map((choice) => (
+                <Pressable
+                  key={choice}
+                  onPress={() => setColor(choice)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Colour ${choice}`}
+                  accessibilityState={{ selected: color === choice }}
+                  className="h-9 w-9 items-center justify-center rounded-full"
+                  style={({ pressed }) => ({
+                    backgroundColor: choice,
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                >
+                  {color === choice ? (
+                    <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                  ) : null}
+                </Pressable>
+              ))}
+            </View>
+
+            <View className="mt-6">
+              <Button label="Add category" onPress={add} disabled={!canAdd} />
+            </View>
+          </Card>
+        </View>
+
+        <Text className="font-sans mt-5 px-1 text-label text-muted">
+          Categories can be added but not deleted. Removing one that already has
+          expenses attached needs a rule for where those expenses go, which belongs
+          in the data layer.
+        </Text>
+      </ScrollView>
     </View>
   );
 }

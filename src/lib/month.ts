@@ -12,8 +12,8 @@
 export type Month = string;
 
 const MONTHS = [
-  "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
 ];
 
 export function monthOf(ts: number): Month {
@@ -30,10 +30,15 @@ function parse(month: Month): { year: number; index: number } {
   return { year, index: m - 1 };
 }
 
-/** "AUG 2026" — the ledger header. */
+/** "August 2026" — the month switcher. */
 export function monthLabel(month: Month): string {
   const { year, index } = parse(month);
   return `${MONTHS[index]} ${year}`;
+}
+
+/** "Aug" — chart axes and other tight spots. */
+export function monthShort(month: Month): string {
+  return MONTHS[parse(month).index].slice(0, 3);
 }
 
 /** Shift by whole months; `n` may be negative. Handles year rollover. */

@@ -1,28 +1,31 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { SectionList, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
+import { SummaryCard } from "@/components/summary-card";
 import {
-  DayHeader,
+  Card,
   EmptyState,
-  Footing,
-  LedgerRow,
-  LedgerSheet,
   MonthSwitcher,
   ScreenHeader,
-} from "@/components/ledger";
+  SectionTitle,
+  TransactionRow,
+} from "@/components/ui";
+import { formatMoney, formatRelativeDay } from "@/lib/format";
 import { currentMonth, type Month } from "@/lib/month";
-import { useCategories, useKnownMonths, useMonthSummary, useTransactions } from "@/queries";
-import type { Transaction } from "@/types/domain";
+import {
+  useBudgets,
+  useCategories,
+  useKnownMonths,
+  useMonthSummary,
+  useTransactions,
+} from "@/queries";
+import type { Category, ID, Transaction } from "@/types/domain";
 
-type DaySection = {
-  ts: number;
-  subtotalMinor: number;
-  data: Transaction[];
-};
+type DayGroup = { ts: number; totalMinor: number; items: Transaction[] };
 
-/** Groups a month's transactions into local calendar days, newest first. */
-function toSections(transactions: Transaction[]): DaySection[] {
+/** Groups into local calendar days, newest first. */
+function groupByDay(transactions: Transaction[]): DayGroup[] {
   const days = new Map<number, Transaction[]>();
 
   for (const tx of transactions) {
@@ -36,86 +39,92 @@ function toSections(transactions: Transaction[]): DaySection[] {
 
   return [...days.entries()]
     .sort((a, b) => b[0] - a[0])
-    .map(([ts, data]) => ({
+    .map(([ts, items]) => ({
       ts,
-      data,
-      subtotalMinor: data.reduce((sum, tx) => sum + tx.amountMinor, 0),
+      items,
+      totalMinor: items.reduce((sum, tx) => sum + tx.amountMinor, 0),
     }));
 }
 
-export default function LedgerScreen() {
+export default function HomeScreen() {
   const [month, setMonth] = useState<Month>(currentMonth());
 
   const { data: transactions } = useTransactions(month);
   const { data: categories } = useCategories();
   const { data: summary } = useMonthSummary(month);
+  const { data: budgets } = useBudgets(month);
   const { data: knownMonths } = useKnownMonths();
 
-  const sections = useMemo(() => toSections(transactions ?? []), [transactions]);
+  const groups = useMemo(() => groupByDay(transactions ?? []), [transactions]);
 
-  /**
-   * Zebra banding is keyed off a running index across the whole month rather than
-   * a per-section one, so the banding stays continuous through day headings the
-   * way the ruling on green-bar paper does.
-   */
-  const parity = useMemo(() => {
-    const map = new Map<string, boolean>();
-    let i = 0;
-    for (const section of sections) {
-      for (const tx of section.data) map.set(tx.id, i++ % 2 === 1);
-    }
+  const categoryById = useMemo(() => {
+    const map = new Map<ID, Category>();
+    for (const category of categories ?? []) map.set(category.id, category);
     return map;
-  }, [sections]);
-
-  const categoryName = useMemo(() => {
-    const map = new Map((categories ?? []).map((c) => [c.id, c.name]));
-    return (id: string) => map.get(id) ?? "Uncategorised";
   }, [categories]);
 
+  const budgetTotal = (budgets ?? []).reduce((sum, b) => sum + b.limitMinor, 0);
   const isEmpty = transactions !== undefined && transactions.length === 0;
 
   return (
-    <View className="flex-1 bg-paper">
+    <View className="flex-1 bg-bg">
       <ScreenHeader
-        leading={
-          <MonthSwitcher
-            month={month}
-            onChange={setMonth}
-            earliest={knownMonths?.[0]}
-          />
-        }
-        actions={[
-          { label: "Find", onPress: () => router.push("/search") },
-          { label: "+ New", onPress: () => router.push("/add") },
-        ]}
+        title="Expenses"
+        actions={[{ icon: "search", label: "Search", onPress: () => router.push("/search") }]}
       />
 
-      <LedgerSheet>
-        {isEmpty ? (
-          <EmptyState message="Nothing entered for this month yet. Tap “+ New” to record the first expense." />
-        ) : (
-          <SectionList
-            sections={sections}
-            keyExtractor={(tx) => tx.id}
-            stickySectionHeadersEnabled
-            contentContainerStyle={{ paddingBottom: 8 }}
-            renderSectionHeader={({ section }) => (
-              <DayHeader ts={section.ts} subtotalMinor={section.subtotalMinor} />
-            )}
-            renderItem={({ item }) => (
-              <LedgerRow
-                title={item.note?.trim() || categoryName(item.categoryId)}
-                meta={item.note?.trim() ? categoryName(item.categoryId) : undefined}
-                amountMinor={item.amountMinor}
-                zebra={parity.get(item.id)}
-                onPress={() => router.push(`/transaction/${item.id}`)}
-              />
-            )}
-          />
-        )}
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="pb-4">
+          <MonthSwitcher month={month} onChange={setMonth} earliest={knownMonths?.[0]} />
+        </View>
 
-        <Footing label="Month to date" amountMinor={summary?.totalMinor ?? 0} />
-      </LedgerSheet>
+        <SummaryCard
+          spentMinor={summary?.totalMinor ?? 0}
+          budgetMinor={budgetTotal}
+          caption="Spent this month"
+        />
+
+        {isEmpty ? (
+          <EmptyState
+            icon="add-circle-outline"
+            title="No expenses yet"
+            body="Tap the + button to record your first one."
+          />
+        ) : (
+          <View className="mt-6 gap-5">
+            {groups.map((group) => (
+              <View key={group.ts}>
+                <SectionTitle title={formatRelativeDay(group.ts)} />
+                <Card padded={false} className="overflow-hidden">
+                  {group.items.map((tx, index) => {
+                    const category = categoryById.get(tx.categoryId);
+                    return (
+                      <TransactionRow
+                        key={tx.id}
+                        title={tx.note?.trim() || category?.name || "Expense"}
+                        subtitle={category?.name ?? "Uncategorised"}
+                        amountMinor={tx.amountMinor}
+                        icon={category?.icon ?? "ellipsis-horizontal"}
+                        color={category?.color ?? "#6B7280"}
+                        showSeparator={index < group.items.length - 1}
+                        onPress={() => router.push(`/transaction/${tx.id}`)}
+                      />
+                    );
+                  })}
+                </Card>
+                <Text className="font-sans mt-2 px-1 text-label text-muted">
+                  {group.items.length}{" "}
+                  {group.items.length === 1 ? "expense" : "expenses"} ·{" "}
+                  {formatMoney(group.totalMinor)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }

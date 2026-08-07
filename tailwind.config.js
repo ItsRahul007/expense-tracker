@@ -11,43 +11,36 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        paper: "rgb(var(--paper) / <alpha-value>)",
-        "row-alt": "rgb(var(--row-alt) / <alpha-value>)",
-        ink: "rgb(var(--ink) / <alpha-value>)",
-        "ink-muted": "rgb(var(--ink-muted) / <alpha-value>)",
-        rule: "rgb(var(--rule) / <alpha-value>)",
-        alert: "rgb(var(--alert) / <alpha-value>)",
+        bg: "rgb(var(--bg) / <alpha-value>)",
+        card: "rgb(var(--card) / <alpha-value>)",
+        fg: "rgb(var(--fg) / <alpha-value>)",
+        muted: "rgb(var(--muted) / <alpha-value>)",
+        border: "rgb(var(--border) / <alpha-value>)",
+        accent: "rgb(var(--accent) / <alpha-value>)",
+        brand: "rgb(var(--brand) / <alpha-value>)",
+        danger: "rgb(var(--danger) / <alpha-value>)",
+        success: "rgb(var(--success) / <alpha-value>)",
       },
-      // React Native does not synthesise font weights: `font-semibold` on a
-      // custom family silently does nothing. So each weight is its own
-      // registered family and its own utility.
+      /**
+       * React Native does not synthesise font weights — `font-semibold` on a
+       * custom family silently does nothing. Each weight is therefore its own
+       * registered family and its own utility. Named `font-sans-*` rather than
+       * `font-medium` so these don't collide with Tailwind's fontWeight
+       * utilities.
+       */
       fontFamily: {
-        mono: ["IBMPlexMono_400Regular"],
-        "mono-medium": ["IBMPlexMono_500Medium"],
-        "mono-semibold": ["IBMPlexMono_600SemiBold"],
-        sans: ["InstrumentSans_400Regular"],
-        "sans-medium": ["InstrumentSans_500Medium"],
-        "sans-semibold": ["InstrumentSans_600SemiBold"],
+        sans: ["PlusJakartaSans_400Regular"],
+        "sans-medium": ["PlusJakartaSans_500Medium"],
+        "sans-semibold": ["PlusJakartaSans_600SemiBold"],
+        "sans-bold": ["PlusJakartaSans_700Bold"],
       },
-      // Named after their role in the ledger, not their size, so the type scale
-      // stays enforced at the callsite.
       fontSize: {
-        figure: ["56px", { lineHeight: "56px" }],
-        amount: ["17px", { lineHeight: "24px" }],
-        margin: ["12px", { lineHeight: "16px" }],
-        row: ["16px", { lineHeight: "22px" }],
-        meta: ["13px", { lineHeight: "18px" }],
-        eyebrow: ["11px", { lineHeight: "14px" }],
-        screen: ["22px", { lineHeight: "28px" }],
-      },
-      // letterSpacing is px in React Native, not em. 0.9px ≈ 0.08em at 11px.
-      letterSpacing: {
-        eyebrow: "0.9px",
-      },
-      spacing: {
-        // Ledger row height. The rule sits at right-4 (16px) and row content
-        // stops at pr-7 (28px), leaving a 12px gutter between figure and rule.
-        row: "52px",
+        display: ["34px", { lineHeight: "40px" }],
+        title: ["22px", { lineHeight: "28px" }],
+        headline: ["17px", { lineHeight: "22px" }],
+        body: ["15px", { lineHeight: "21px" }],
+        label: ["13px", { lineHeight: "18px" }],
+        caption: ["11px", { lineHeight: "15px" }],
       },
     },
   },

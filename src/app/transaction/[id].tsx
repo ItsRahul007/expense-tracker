@@ -1,20 +1,15 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
-import { Alert, Pressable, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { Chip } from "@/components/keypad/chip";
-import { NumericKeypad } from "@/components/keypad/numeric-keypad";
-import {
-  Amount,
-  DoubleRule,
-  Eyebrow,
-  LedgerSheet,
-  MetaRow,
-  Rule,
-  ScreenHeader,
-} from "@/components/ledger";
+import { Button, Card, Chip, IconBadge, ScreenHeader } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
-import { digitsToMinor, formatRelativeDay } from "@/lib/format";
+import {
+  digitsToMinor,
+  formatAmountEntry,
+  formatRelativeDay,
+  formatTime,
+} from "@/lib/format";
 import {
   useCategories,
   useDeleteTransaction,
@@ -23,7 +18,7 @@ import {
 } from "@/queries";
 import type { ID } from "@/types/domain";
 
-const DAY_CHOICES = 7;
+const DAY_CHOICES = 5;
 
 function dayStart(offset: number): number {
   const d = new Date();
@@ -44,11 +39,10 @@ export default function TransactionScreen() {
   const [digits, setDigits] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<ID | null>(null);
   const [occurredAt, setOccurredAt] = useState<number | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [picker, setPicker] = useState<"amount" | "category" | "date" | null>(null);
+  const [note, setNote] = useState("");
 
   // Seed the editable copy once the record arrives, then leave it alone so a
-  // background refetch can't overwrite what's being typed.
+  // refetch can't overwrite what's being typed.
   useEffect(() => {
     if (transaction && digits === null) {
       setDigits(String(transaction.amountMinor));
@@ -58,169 +52,174 @@ export default function TransactionScreen() {
     }
   }, [transaction, digits]);
 
-  if (isPending || !transaction || digits === null) {
-    return (
-      <View className="flex-1 bg-paper">
-        <ScreenHeader
-          title="Entry"
-          actions={[{ label: "Close", onPress: () => router.back() }]}
-        />
-      </View>
-    );
-  }
-
-  const amountMinor = digitsToMinor(digits);
+  const amountMinor = digits === null ? 0 : digitsToMinor(digits);
   const category = categories?.find((c) => c.id === categoryId);
 
+  /** The original date may predate the chip window, so it's offered as its own
+   *  option — otherwise opening an old expense would silently re-date it. */
+  const dayOptions = useMemo(() => {
+    const recent = Array.from({ length: DAY_CHOICES }, (_, offset) => dayStart(offset));
+    if (occurredAt !== null && occurredAt < dayStart(DAY_CHOICES - 1)) {
+      return [occurredAt, ...recent];
+    }
+    return recent;
+  }, [occurredAt]);
+
   const dirty =
-    amountMinor !== transaction.amountMinor ||
-    categoryId !== transaction.categoryId ||
-    occurredAt !== transaction.occurredAt ||
-    (note ?? "") !== (transaction.note ?? "");
+    transaction !== null &&
+    transaction !== undefined &&
+    (amountMinor !== transaction.amountMinor ||
+      categoryId !== transaction.categoryId ||
+      occurredAt !== transaction.occurredAt ||
+      note !== (transaction.note ?? ""));
 
   const save = async () => {
+    if (!transaction || categoryId === null || occurredAt === null) return;
     await updateTransaction.mutateAsync({
       id: transaction.id,
       amountMinor,
-      categoryId: categoryId ?? transaction.categoryId,
-      occurredAt: occurredAt ?? transaction.occurredAt,
-      note: (note ?? "").trim() || null,
+      categoryId,
+      occurredAt,
+      note: note.trim() || null,
     });
     router.back();
   };
 
   const confirmDelete = () => {
-    Alert.alert(
-      "Delete this entry?",
-      "It will be removed from the ledger. This cannot be undone.",
-      [
-        { text: "Keep", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            await deleteTransaction.mutateAsync(transaction.id);
-            router.back();
-          },
+    if (!transaction) return;
+    Alert.alert("Delete this expense?", "This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          await deleteTransaction.mutateAsync(transaction.id);
+          router.back();
         },
-      ],
-    );
+      },
+    ]);
   };
 
-  /** The original date may be older than the chip window, so it's offered as its
-   *  own chip — otherwise editing a two-month-old entry would silently move it. */
-  const dayOptions = [
-    ...(occurredAt !== null && occurredAt < dayStart(DAY_CHOICES - 1)
-      ? [occurredAt]
-      : []),
-    ...Array.from({ length: DAY_CHOICES }, (_, offset) => dayStart(offset)),
-  ];
+  if (isPending || !transaction || digits === null) {
+    return (
+      <View className="flex-1 bg-bg">
+        <ScreenHeader title="Expense" onBack={() => router.back()} />
+      </View>
+    );
+  }
 
   return (
-    <View className="flex-1 bg-paper">
+    <View className="flex-1 bg-bg">
       <ScreenHeader
-        title="Entry"
-        actions={[
-          ...(dirty
-            ? [{ label: updateTransaction.isPending ? "Saving…" : "Save", onPress: save }]
-            : []),
-          { label: "Close", onPress: () => router.back() },
-        ]}
+        title="Expense"
+        subtitle={`${formatRelativeDay(transaction.occurredAt)} at ${formatTime(transaction.occurredAt)}`}
+        onBack={() => router.back()}
       />
 
-      <LedgerSheet>
-        <View className="flex-1">
-          <Pressable
-            onPress={() => setPicker(picker === "amount" ? null : "amount")}
-            accessibilityRole="button"
-            accessibilityLabel="Edit amount"
-            className="flex-row items-end justify-between py-6 pl-4 pr-7"
-            style={({ pressed }) => (pressed ? { opacity: 0.55 } : undefined)}
-          >
-            <Eyebrow className="pb-3">Amount ₹</Eyebrow>
-            <Amount amountMinor={amountMinor} size="display" />
-          </Pressable>
-
-          <MetaRow
-            label="Category"
-            value={category?.name ?? "—"}
-            onPress={() => setPicker(picker === "category" ? null : "category")}
-            expanded={
-              picker === "category" ? (
-                <View className="flex-row flex-wrap gap-2">
-                  {(categories ?? []).map((c) => (
-                    <Chip
-                      key={c.id}
-                      label={c.code}
-                      selected={c.id === categoryId}
-                      onPress={() => {
-                        setCategoryId(c.id);
-                        setPicker(null);
-                      }}
-                    />
-                  ))}
-                </View>
-              ) : null
-            }
-          />
-
-          <MetaRow
-            label="Date"
-            value={occurredAt ? formatRelativeDay(occurredAt) : "—"}
-            onPress={() => setPicker(picker === "date" ? null : "date")}
-            expanded={
-              picker === "date" ? (
-                <View className="flex-row flex-wrap gap-2">
-                  {dayOptions.map((ts) => (
-                    <Chip
-                      key={ts}
-                      label={formatRelativeDay(ts).slice(0, 9)}
-                      selected={ts === occurredAt}
-                      onPress={() => {
-                        setOccurredAt(ts);
-                        setPicker(null);
-                      }}
-                    />
-                  ))}
-                </View>
-              ) : null
-            }
-          />
-
-          <Rule />
-          <View className="h-12 flex-row items-center pl-4 pr-7">
-            <Eyebrow>Note</Eyebrow>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Card className="py-5">
+          <Text className="font-sans-medium text-label text-muted">Amount</Text>
+          <View className="mt-1 flex-row items-center">
+            <Text className="font-sans-bold text-display text-muted">₹</Text>
             <TextInput
-              value={note ?? ""}
-              onChangeText={setNote}
-              placeholder="Optional"
-              returnKeyType="done"
-              className="font-sans-medium ml-4 flex-1 text-right text-row text-ink"
-              placeholderTextColor={palette.inkMuted}
+              value={formatAmountEntry(amountMinor)}
+              onChangeText={(next) => setDigits(next.replace(/\D/g, "").slice(0, 9))}
+              keyboardType="number-pad"
+              textAlign="right"
+              className="font-sans-bold ml-2 flex-1 text-display text-fg"
+              // See the note in add.tsx — without minWidth: 0 the field cannot
+              // shrink below its content and overflows the card.
+              style={{ paddingVertical: 0, minWidth: 0 }}
+              accessibilityLabel="Amount in rupees"
             />
           </View>
-          <Rule />
-        </View>
-      </LedgerSheet>
+        </Card>
 
-      {picker === "amount" ? (
-        <NumericKeypad
-          onDigits={(next) => setDigits((current) => ((current ?? "") + next).slice(0, 9))}
-          onBackspace={() => setDigits((current) => (current ?? "").slice(0, -1))}
-        />
-      ) : null}
-
-      <DoubleRule />
-      <Pressable
-        onPress={confirmDelete}
-        accessibilityRole="button"
-        className="h-14 items-center justify-center"
-        style={({ pressed }) => (pressed ? { opacity: 0.5 } : undefined)}
-      >
-        <Text className="font-sans-semibold text-eyebrow uppercase tracking-eyebrow text-alert">
-          {deleteTransaction.isPending ? "Deleting…" : "Delete entry"}
+        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+          Category
         </Text>
-      </Pressable>
+        <View className="flex-row flex-wrap gap-2">
+          {(categories ?? []).map((option) => {
+            const selected = option.id === categoryId;
+            return (
+              <Pressable
+                key={option.id}
+                onPress={() => setCategoryId(option.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={option.name}
+                className={`w-[31%] items-center gap-1.5 rounded-2xl border py-3 ${
+                  selected ? "border-accent bg-accent/10" : "border-border bg-card"
+                }`}
+                style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+              >
+                <IconBadge icon={option.icon} color={option.color} size="sm" />
+                <Text
+                  numberOfLines={1}
+                  className={`font-sans-medium px-1 text-caption ${
+                    selected ? "text-accent" : "text-muted"
+                  }`}
+                >
+                  {option.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+          Date
+        </Text>
+        <View className="flex-row flex-wrap gap-2">
+          {dayOptions.map((ts) => (
+            <Chip
+              key={ts}
+              label={formatRelativeDay(ts)}
+              selected={ts === occurredAt}
+              onPress={() => setOccurredAt(ts)}
+            />
+          ))}
+        </View>
+
+        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+          Note
+        </Text>
+        <Card padded={false}>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder="Where was it? (optional)"
+            placeholderTextColor={palette.muted}
+            returnKeyType="done"
+            className="font-sans min-h-[52px] px-4 py-3 text-body text-fg"
+          />
+        </Card>
+
+        <View className="mt-8 gap-3">
+          <Button
+            label="Save changes"
+            onPress={save}
+            disabled={!dirty || amountMinor === 0}
+            loading={updateTransaction.isPending}
+          />
+          <Button
+            label="Delete expense"
+            variant="danger"
+            onPress={confirmDelete}
+            loading={deleteTransaction.isPending}
+          />
+        </View>
+
+        {category ? (
+          <Text className="font-sans mt-5 px-1 text-center text-label text-muted">
+            Filed under {category.name}
+          </Text>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }

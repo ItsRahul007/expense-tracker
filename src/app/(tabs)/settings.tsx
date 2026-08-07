@@ -4,14 +4,7 @@ import * as Sharing from "expo-sharing";
 import { useState } from "react";
 import { Alert, ScrollView, Text, View } from "react-native";
 
-import { Chip } from "@/components/keypad/chip";
-import {
-  Eyebrow,
-  LedgerSheet,
-  MetaRow,
-  Rule,
-  ScreenHeader,
-} from "@/components/ledger";
+import { Card, Chip, ScreenHeader, SectionTitle, SettingsRow } from "@/components/ui";
 import { formatISODate } from "@/lib/format";
 import {
   exportAllData,
@@ -36,7 +29,6 @@ export default function SettingsScreen() {
   const { data: months } = useKnownMonths();
   const { data: allEntries } = useTransactions(null);
 
-  const [picker, setPicker] = useState<"theme" | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const exportLedger = async () => {
@@ -46,7 +38,7 @@ export default function SettingsScreen() {
 
       // SDK 55's object-oriented file API. The legacy `FileSystem.*` helpers now
       // throw unless imported from "expo-file-system/legacy".
-      const file = new File(Paths.document, `khata-${formatISODate(Date.now())}.csv`);
+      const file = new File(Paths.document, `expenses-${formatISODate(Date.now())}.csv`);
       if (file.exists) file.delete();
       file.create();
       file.write(csv);
@@ -55,7 +47,7 @@ export default function SettingsScreen() {
         await Sharing.shareAsync(file.uri, {
           mimeType: "text/csv",
           UTI: "public.comma-separated-values-text",
-          dialogTitle: "Export ledger",
+          dialogTitle: "Export expenses",
         });
       } else {
         Alert.alert("Saved", `Written to ${file.uri}`);
@@ -71,72 +63,69 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-paper">
+    <View className="flex-1 bg-bg">
       <ScreenHeader title="Settings" />
 
-      <LedgerSheet>
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-          <SectionLabel>Appearance</SectionLabel>
-          <MetaRow
-            label="Theme"
-            value={THEMES.find((t) => t.value === theme)?.label ?? "System"}
-            onPress={() => setPicker(picker === "theme" ? null : "theme")}
-            expanded={
-              picker === "theme" ? (
-                <View className="flex-row gap-2">
-                  {THEMES.map((option) => (
-                    <Chip
-                      key={option.value}
-                      label={option.label}
-                      selected={theme === option.value}
-                      onPress={() => {
-                        setSetting.mutate({ key: "theme", value: option.value });
-                        setPicker(null);
-                      }}
-                    />
-                  ))}
-                </View>
-              ) : null
-            }
-          />
-
-          <SectionLabel>Ledger</SectionLabel>
-          <MetaRow
-            label="Categories"
-            value={String(categories?.length ?? 0)}
-            onPress={() => router.push("/categories")}
-          />
-          <MetaRow
-            label="Export"
-            value={exporting ? "Preparing…" : "CSV"}
-            onPress={exporting ? undefined : exportLedger}
-          />
-
-          <SectionLabel>This ledger</SectionLabel>
-          <MetaRow label="Entries" value={String(allEntries?.length ?? 0)} tone="muted" />
-          <MetaRow
-            label="Months recorded"
-            value={String(months?.length ?? 0)}
-            tone="muted"
-          />
-          <Rule />
-
-          <View className="px-4 pt-6">
-            <Text className="font-sans text-meta text-ink-muted">
-              Everything lives on this device. Export regularly — an uninstall
-              takes the ledger with it.
-            </Text>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <SectionTitle title="Appearance" />
+        <Card>
+          <Text className="font-sans-medium mb-3 text-body text-fg">Theme</Text>
+          <View className="flex-row gap-2">
+            {THEMES.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                selected={theme === option.value}
+                onPress={() => setSetting.mutate({ key: "theme", value: option.value })}
+              />
+            ))}
           </View>
-        </ScrollView>
-      </LedgerSheet>
-    </View>
-  );
-}
+        </Card>
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <View className="h-10 justify-end pb-2 pl-4">
-      <Eyebrow>{children}</Eyebrow>
+        <View className="mt-6">
+          <SectionTitle title="Data" />
+          <Card padded={false} className="overflow-hidden">
+            <SettingsRow
+              icon="pricetags-outline"
+              label="Categories"
+              value={String(categories?.length ?? 0)}
+              onPress={() => router.push("/categories")}
+            />
+            <SettingsRow
+              icon="download-outline"
+              label="Export as CSV"
+              value={exporting ? "Preparing…" : undefined}
+              onPress={exporting ? undefined : exportLedger}
+              showSeparator={false}
+            />
+          </Card>
+        </View>
+
+        <View className="mt-6">
+          <SectionTitle title="About" />
+          <Card padded={false} className="overflow-hidden">
+            <SettingsRow
+              icon="receipt-outline"
+              label="Expenses recorded"
+              value={String(allEntries?.length ?? 0)}
+            />
+            <SettingsRow
+              icon="calendar-outline"
+              label="Months with data"
+              value={String(months?.length ?? 0)}
+              showSeparator={false}
+            />
+          </Card>
+        </View>
+
+        <Text className="font-sans mt-5 px-1 text-label text-muted">
+          Everything is stored on this device only. Export now and then — removing
+          the app takes the data with it.
+        </Text>
+      </ScrollView>
     </View>
   );
 }

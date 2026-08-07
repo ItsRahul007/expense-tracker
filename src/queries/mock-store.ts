@@ -31,14 +31,14 @@ function makeRng(seed: number) {
 }
 
 const CATEGORIES: Category[] = [
-  { id: "c-food", name: "Food & Drink", code: "FOOD", sortOrder: 0 },
-  { id: "c-groc", name: "Groceries", code: "GROC", sortOrder: 1 },
-  { id: "c-trvl", name: "Transport", code: "TRVL", sortOrder: 2 },
-  { id: "c-home", name: "Rent & Bills", code: "HOME", sortOrder: 3 },
-  { id: "c-hlth", name: "Health", code: "HLTH", sortOrder: 4 },
-  { id: "c-shop", name: "Shopping", code: "SHOP", sortOrder: 5 },
-  { id: "c-entm", name: "Entertainment", code: "ENTM", sortOrder: 6 },
-  { id: "c-misc", name: "Other", code: "MISC", sortOrder: 7 },
+  { id: "c-food", name: "Food & Drink", icon: "restaurant", color: "#F97316", sortOrder: 0 },
+  { id: "c-groc", name: "Groceries", icon: "cart", color: "#10B981", sortOrder: 1 },
+  { id: "c-trvl", name: "Transport", icon: "car", color: "#3B82F6", sortOrder: 2 },
+  { id: "c-home", name: "Rent & Bills", icon: "receipt", color: "#8B5CF6", sortOrder: 3 },
+  { id: "c-hlth", name: "Health", icon: "fitness", color: "#EC4899", sortOrder: 4 },
+  { id: "c-shop", name: "Shopping", icon: "bag-handle", color: "#F59E0B", sortOrder: 5 },
+  { id: "c-entm", name: "Entertainment", icon: "game-controller", color: "#06B6D4", sortOrder: 6 },
+  { id: "c-misc", name: "Other", icon: "ellipsis-horizontal", color: "#6B7280", sortOrder: 7 },
 ];
 
 /** Plausible merchants and paise ranges, so the ledger reads like a real month

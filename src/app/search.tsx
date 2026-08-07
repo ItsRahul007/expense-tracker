@@ -1,20 +1,19 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, ScrollView, TextInput, View } from "react-native";
+import { ScrollView, Text, TextInput, View } from "react-native";
 
-import { Chip } from "@/components/keypad/chip";
 import {
+  Card,
+  Chip,
   EmptyState,
-  Footing,
-  LedgerRow,
-  LedgerSheet,
-  Rule,
   ScreenHeader,
-} from "@/components/ledger";
+  TransactionRow,
+} from "@/components/ui";
 import { usePalette } from "@/constants/palette";
-import { formatRelativeDay } from "@/lib/format";
+import { formatMoney, formatRelativeDay } from "@/lib/format";
 import { useCategories, useTransactions } from "@/queries";
-import type { ID } from "@/types/domain";
+import type { Category, ID } from "@/types/domain";
 
 export default function SearchScreen() {
   const palette = usePalette();
@@ -24,9 +23,8 @@ export default function SearchScreen() {
 
   /**
    * The query is keyed by its filters, so an un-debounced field would mint a new
-   * cache entry on every keystroke — nine wasted queries to type "groceries".
-   * 180ms is below the threshold where typing feels laggy and above the rate at
-   * which anyone types.
+   * cache entry per keystroke — nine wasted queries to type "groceries". 180ms is
+   * below the threshold where typing feels laggy and above normal typing speed.
    */
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedText(text), 180);
@@ -46,42 +44,45 @@ export default function SearchScreen() {
   const { data: results } = useTransactions(null, filters);
   const { data: categories } = useCategories();
 
+  const categoryById = useMemo(() => {
+    const map = new Map<ID, Category>();
+    for (const category of categories ?? []) map.set(category.id, category);
+    return map;
+  }, [categories]);
+
   const rows = hasQuery ? (results ?? []) : [];
   const total = rows.reduce((sum, tx) => sum + tx.amountMinor, 0);
 
-  const nameOf = (id: ID) =>
-    categories?.find((c) => c.id === id)?.name ?? "Uncategorised";
-
   return (
-    <View className="flex-1 bg-paper">
-      <ScreenHeader
-        title="Find"
-        actions={[{ label: "Close", onPress: () => router.back() }]}
-      />
+    <View className="flex-1 bg-bg">
+      <ScreenHeader title="Search" onBack={() => router.back()} />
 
-      <View className="h-12 justify-center px-4">
-        <TextInput
-          autoFocus
-          value={text}
-          onChangeText={setText}
-          placeholder="Search notes and categories"
-          placeholderTextColor={palette.inkMuted}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-          className="font-sans-medium text-row text-ink"
-        />
+      <View className="px-4 pb-3">
+        <View className="flex-row items-center gap-2 rounded-2xl border border-border bg-card px-3">
+          <Ionicons name="search" size={18} color={palette.muted} />
+          <TextInput
+            autoFocus
+            value={text}
+            onChangeText={setText}
+            placeholder="Search notes and categories"
+            placeholderTextColor={palette.muted}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            className="font-sans h-12 flex-1 text-body text-fg"
+            style={{ minWidth: 0 }}
+          />
+        </View>
       </View>
-      <Rule />
 
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingBottom: 12 }}
       >
         {(categories ?? []).map((category) => (
           <Chip
             key={category.id}
-            label={category.code}
+            label={category.name}
             selected={categoryIds.includes(category.id)}
             onPress={() =>
               setCategoryIds((current) =>
@@ -94,40 +95,47 @@ export default function SearchScreen() {
         ))}
       </ScrollView>
 
-      <LedgerSheet>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         {rows.length === 0 ? (
           <EmptyState
-            message={
+            icon={hasQuery ? "search-outline" : "funnel-outline"}
+            title={hasQuery ? "No matches" : "Search every month"}
+            body={
               hasQuery
-                ? "No entries match. Try a shorter word, or clear the category filters."
-                : "Search across every month. Filter by category, or type part of a note."
+                ? "Try a shorter word, or clear the category filters."
+                : "Type part of a note, or pick a category to filter by."
             }
           />
         ) : (
-          <FlatList
-            data={rows}
-            keyExtractor={(tx) => tx.id}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingBottom: 8 }}
-            renderItem={({ item, index }) => (
-              <LedgerRow
-                title={item.note?.trim() || nameOf(item.categoryId)}
-                meta={`${nameOf(item.categoryId)} · ${formatRelativeDay(item.occurredAt)}`}
-                amountMinor={item.amountMinor}
-                zebra={index % 2 === 1}
-                onPress={() => router.push(`/transaction/${item.id}`)}
-              />
-            )}
-          />
+          <>
+            <Text className="font-sans-medium mb-2 px-1 text-label text-muted">
+              {rows.length} {rows.length === 1 ? "result" : "results"} ·{" "}
+              {formatMoney(total)}
+            </Text>
+            <Card padded={false} className="overflow-hidden">
+              {rows.map((tx, index) => {
+                const category = categoryById.get(tx.categoryId);
+                return (
+                  <TransactionRow
+                    key={tx.id}
+                    title={tx.note?.trim() || category?.name || "Expense"}
+                    subtitle={`${category?.name ?? "Uncategorised"} · ${formatRelativeDay(tx.occurredAt)}`}
+                    amountMinor={tx.amountMinor}
+                    icon={category?.icon ?? "ellipsis-horizontal"}
+                    color={category?.color ?? "#6B7280"}
+                    showSeparator={index < rows.length - 1}
+                    onPress={() => router.push(`/transaction/${tx.id}`)}
+                  />
+                );
+              })}
+            </Card>
+          </>
         )}
-
-        {rows.length > 0 ? (
-          <Footing
-            label={`${rows.length} ${rows.length === 1 ? "entry" : "entries"}`}
-            amountMinor={total}
-          />
-        ) : null}
-      </LedgerSheet>
+      </ScrollView>
     </View>
   );
 }

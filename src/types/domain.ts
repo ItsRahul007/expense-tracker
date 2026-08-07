@@ -22,14 +22,10 @@ export type ID = string;
 export type Category = {
   id: ID;
   name: string;
-  /**
-   * Short ledger account code — 2-4 uppercase letters, e.g. "FOOD", "TRVL".
-   *
-   * This is what an account book actually uses, and it gives the UI a compact
-   * label for tight spots (filter chips, keypad picker, the margin column)
-   * without introducing an icon set that would fight the typographic design.
-   */
-  code: string;
+  /** Ionicons glyph name, e.g. "restaurant" — see @expo/vector-icons. */
+  icon: string;
+  /** Hex colour for the icon. The UI renders its badge as this at low opacity. */
+  color: string;
   sortOrder: number;
 };
 

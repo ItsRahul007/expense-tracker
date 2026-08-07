@@ -3,31 +3,45 @@
 @tailwind utilities;
 
 /**
- * Khata design tokens.
+ * Design tokens.
  *
- * Values are space-separated RGB triplets rather than hex so Tailwind's
- * `<alpha-value>` placeholder works — that's what lets the insights bars use
- * `bg-ink/40` as an ink-density ramp instead of introducing a second palette.
+ * Space-separated RGB triplets rather than hex so Tailwind's `<alpha-value>`
+ * placeholder works — that's what lets category tints be written as
+ * `bg-accent/12` instead of needing a second set of colour variables.
  *
- * Dark values are overrides under `.dark:root`, which NativeWind toggles via
- * `colorScheme.set()` because `darkMode` is set to "class".
+ * Dark values override under `.dark:root`, which NativeWind toggles because
+ * `darkMode` is set to "class" in tailwind.config.js.
  */
 @layer base {
   :root {
-    --paper: 242 245 241;
-    --row-alt: 220 230 220;
-    --ink: 27 42 35;
-    --ink-muted: 90 110 100;
-    --rule: 185 203 192;
-    --alert: 166 50 30;
+    --bg: 245 246 248;
+    --card: 255 255 255;
+    --fg: 20 21 26;
+    --muted: 107 114 128;
+    --border: 232 234 238;
+    --accent: 91 91 214;
+    /**
+     * Fixed in both themes. `brand` is for filled surfaces that carry white
+     * content — the summary card, the add button, primary buttons. `accent`
+     * varies per theme because it has to stay legible as *text* on the page
+     * background, and the lighter dark-mode value drops white text below 4.5:1
+     * when used as a fill.
+     */
+    --brand: 91 91 214;
+    --danger: 229 72 77;
+    --success: 16 185 129;
   }
 
   .dark:root {
-    --paper: 16 22 20;
-    --row-alt: 22 30 26;
-    --ink: 221 231 224;
-    --ink-muted: 138 158 146;
-    --rule: 42 56 48;
-    --alert: 226 102 76;
+    --bg: 14 15 19;
+    --card: 25 27 33;
+    --fg: 242 243 245;
+    --muted: 154 160 170;
+    --border: 38 41 50;
+    /* Lifted for dark: #5B5BD6 on a near-black background falls under 4.5:1. */
+    --accent: 124 124 232;
+    --brand: 91 91 214;
+    --danger: 255 99 105;
+    --success: 52 211 153;
   }
 }

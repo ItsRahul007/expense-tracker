@@ -1,13 +1,9 @@
 import {
-  IBMPlexMono_400Regular,
-  IBMPlexMono_500Medium,
-  IBMPlexMono_600SemiBold,
-} from "@expo-google-fonts/ibm-plex-mono";
-import {
-  InstrumentSans_400Regular,
-  InstrumentSans_500Medium,
-  InstrumentSans_600SemiBold,
-} from "@expo-google-fonts/instrument-sans";
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+} from "@expo-google-fonts/plus-jakarta-sans";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -29,12 +25,10 @@ export default function RootLayout() {
   // Each weight is registered under its own family name because React Native
   // does not synthesise weights — see the fontFamily block in tailwind.config.js.
   const [fontsLoaded, fontError] = useFonts({
-    IBMPlexMono_400Regular,
-    IBMPlexMono_500Medium,
-    IBMPlexMono_600SemiBold,
-    InstrumentSans_400Regular,
-    InstrumentSans_500Medium,
-    InstrumentSans_600SemiBold,
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
   });
 
   const { data: themePreference, isPending: themePending } = useSetting("theme");
@@ -91,17 +85,17 @@ function RootNavigator() {
   const palette = dark ? PALETTE.dark : PALETTE.light;
 
   // React Navigation needs literal colours: it paints the screen background
-  // during transitions, and a default-white card behind a dark ledger flashes
-  // on every push.
+  // during transitions, and a default-white card behind a dark screen flashes on
+  // every push.
   const navTheme = {
     ...(dark ? DarkTheme : DefaultTheme),
     colors: {
       ...(dark ? DarkTheme : DefaultTheme).colors,
-      background: palette.paper,
-      card: palette.paper,
-      text: palette.ink,
-      border: palette.rule,
-      primary: palette.ink,
+      background: palette.bg,
+      card: palette.card,
+      text: palette.fg,
+      border: palette.border,
+      primary: palette.accent,
     },
   };
 
@@ -112,7 +106,7 @@ function RootNavigator() {
         <Stack
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: palette.paper },
+            contentStyle: { backgroundColor: palette.bg },
           }}
         >
           <Stack.Screen name="(tabs)" />
@@ -121,10 +115,11 @@ function RootNavigator() {
             options={{
               presentation: "formSheet",
               sheetGrabberVisible: true,
-              sheetCornerRadius: 14,
-              // Tall enough for the display figure plus the full keypad, short
-              // enough that the ledger stays visible behind it.
-              sheetAllowedDetents: [0.72],
+              sheetCornerRadius: 24,
+              // Nearly full height: the form has an amount field, a category
+              // grid, date chips and a note, and a short sheet would make the
+              // grid scroll immediately.
+              sheetAllowedDetents: [0.92],
             }}
           />
           <Stack.Screen name="search" options={{ presentation: "modal" }} />

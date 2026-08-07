@@ -255,7 +255,7 @@ export async function exportAllData(): Promise<string> {
   const { transactions, categories } = store.getState();
   const nameOf = (id: ID) => categories.find((c) => c.id === id)?.name ?? "";
 
-  const { formatAmount, formatISODate } = await import("@/lib/format");
+  const { formatAmountExact, formatISODate } = await import("@/lib/format");
 
   const escape = (value: string) =>
     /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -266,7 +266,7 @@ export async function exportAllData(): Promise<string> {
       [
         formatISODate(tx.occurredAt),
         escape(nameOf(tx.categoryId)),
-        formatAmount(tx.amountMinor),
+        formatAmountExact(tx.amountMinor),
         escape(tx.note ?? ""),
       ].join(","),
     );

@@ -1,21 +1,20 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
 
 import {
-  Amount,
+  Card,
   EmptyState,
-  Footing,
-  LedgerSheet,
+  IconBadge,
   MonthSwitcher,
-  Rule,
+  Progress,
   ScreenHeader,
-} from "@/components/ledger";
-import { ProgressBar } from "@/components/progress-bar";
+  SectionTitle,
+} from "@/components/ui";
 import { usePalette } from "@/constants/palette";
-import { formatCompact } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { currentMonth, type Month } from "@/lib/month";
 import { useBudgets, useCategories, useUpsertBudget } from "@/queries";
-import type { BudgetStatus, ID } from "@/types/domain";
+import type { BudgetStatus, Category, ID } from "@/types/domain";
 
 export default function BudgetsScreen() {
   const [month, setMonth] = useState<Month>(currentMonth());
@@ -25,67 +24,102 @@ export default function BudgetsScreen() {
   const { data: categories } = useCategories();
   const upsertBudget = useUpsertBudget();
 
+  const categoryById = useMemo(() => {
+    const map = new Map<ID, Category>();
+    for (const category of categories ?? []) map.set(category.id, category);
+    return map;
+  }, [categories]);
+
   const rows = budgets ?? [];
   const totalLimit = rows.reduce((sum, b) => sum + b.limitMinor, 0);
   const totalSpent = rows.reduce((sum, b) => sum + b.spentMinor, 0);
-
-  const nameOf = (id: ID) =>
-    categories?.find((c) => c.id === id)?.name ?? "Uncategorised";
+  const overCount = rows.filter((b) => b.spentMinor > b.limitMinor).length;
 
   return (
-    <View className="flex-1 bg-paper">
-      <ScreenHeader
-        title="Budgets"
-        trailing={<MonthSwitcher month={month} onChange={setMonth} />}
-      />
+    <View className="flex-1 bg-bg">
+      <ScreenHeader title="Budgets" />
 
-      <LedgerSheet>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="pb-4">
+          <MonthSwitcher month={month} onChange={setMonth} />
+        </View>
+
         {rows.length === 0 ? (
-          <EmptyState message="No limits set for this month. Budgets are set per category and only apply to the month you set them in." />
+          <EmptyState
+            icon="wallet-outline"
+            title="No budgets set"
+            body="Budgets apply to a single month, so you can set a different limit whenever things change."
+          />
         ) : (
-          <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
-            {rows.map((budget, index) => (
-              <BudgetRow
-                key={budget.categoryId}
-                budget={budget}
-                name={nameOf(budget.categoryId)}
-                zebra={index % 2 === 1}
-                editing={editing === budget.categoryId}
-                onToggleEdit={() =>
-                  setEditing(editing === budget.categoryId ? null : budget.categoryId)
-                }
-                onCommit={(limitMinor) => {
-                  upsertBudget.mutate({ ...budget, limitMinor });
-                  setEditing(null);
-                }}
-              />
-            ))}
-          </ScrollView>
-        )}
+          <>
+            <Card>
+              <View className="flex-row items-end justify-between">
+                <View>
+                  <Text className="font-sans-medium text-label text-muted">
+                    Spent of {formatMoney(totalLimit)}
+                  </Text>
+                  <Text className="font-sans-bold mt-1 text-display text-fg">
+                    {formatMoney(totalSpent, { paise: false })}
+                  </Text>
+                </View>
+                {overCount > 0 ? (
+                  <View className="rounded-full bg-danger/10 px-3 py-1.5">
+                    <Text className="font-sans-semibold text-label text-danger">
+                      {overCount} over
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <View className="mt-4">
+                <Progress
+                  fraction={totalLimit > 0 ? totalSpent / totalLimit : 0}
+                  over={totalSpent > totalLimit}
+                />
+              </View>
+            </Card>
 
-        <Footing
-          label={`Allotted ${formatCompact(totalLimit)}`}
-          amountMinor={totalSpent}
-          tone={totalSpent > totalLimit ? "alert" : "ink"}
-        />
-      </LedgerSheet>
+            <View className="mt-6">
+              <SectionTitle title="By category" />
+              <View className="gap-3">
+                {rows.map((budget) => (
+                  <BudgetCard
+                    key={budget.categoryId}
+                    budget={budget}
+                    category={categoryById.get(budget.categoryId)}
+                    editing={editing === budget.categoryId}
+                    onStartEdit={() => setEditing(budget.categoryId)}
+                    onCancel={() => setEditing(null)}
+                    onCommit={(limitMinor) => {
+                      upsertBudget.mutate({ ...budget, limitMinor });
+                      setEditing(null);
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
+          </>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
-function BudgetRow({
+function BudgetCard({
   budget,
-  name,
-  zebra,
+  category,
   editing,
-  onToggleEdit,
+  onStartEdit,
+  onCancel,
   onCommit,
 }: {
   budget: BudgetStatus;
-  name: string;
-  zebra: boolean;
+  category?: Category;
   editing: boolean;
-  onToggleEdit: () => void;
+  onStartEdit: () => void;
+  onCancel: () => void;
   onCommit: (limitMinor: number) => void;
 }) {
   const palette = usePalette();
@@ -93,59 +127,81 @@ function BudgetRow({
 
   const over = budget.spentMinor > budget.limitMinor;
   const fraction = budget.limitMinor > 0 ? budget.spentMinor / budget.limitMinor : 0;
-  const percent = Math.round(fraction * 100);
+  const remaining = budget.limitMinor - budget.spentMinor;
+
+  const commit = () => {
+    const rupees = Number(draft.replace(/\D/g, ""));
+    if (Number.isFinite(rupees) && draft.trim() !== "") onCommit(rupees * 100);
+    else onCancel();
+  };
 
   return (
-    <View className={zebra ? "bg-row-alt" : ""}>
-      <Rule />
-      {/* pr-7 on the container so the figure, the bar and the percentage all
-          stop 12px clear of the alignment rule. */}
-      <View className="pb-3 pl-4 pr-7 pt-3">
-        <View className="flex-row items-baseline justify-between">
-          <Text className="font-sans-medium text-row text-ink">{name}</Text>
-          <Amount amountMinor={budget.spentMinor} tone={over ? "alert" : "ink"} />
+    <Card>
+      <View className="flex-row items-center gap-3">
+        <IconBadge
+          icon={category?.icon ?? "ellipsis-horizontal"}
+          color={category?.color ?? "#6B7280"}
+        />
+        <View className="flex-1">
+          <Text className="font-sans-semibold text-body text-fg">
+            {category?.name ?? "Uncategorised"}
+          </Text>
+          <Text className="font-sans mt-0.5 text-label text-muted">
+            {formatMoney(budget.spentMinor)} of {formatMoney(budget.limitMinor)}
+          </Text>
         </View>
+        <Text
+          className={`font-sans-semibold text-body ${over ? "text-danger" : "text-fg"}`}
+        >
+          {Math.round(fraction * 100)}%
+        </Text>
+      </View>
 
-        <View className="pb-2 pt-2">
-          <ProgressBar fraction={fraction} over={over} />
-        </View>
+      <View className="mt-3">
+        <Progress fraction={fraction} over={over} tint={category?.color} />
+      </View>
 
-        <View className="flex-row items-center justify-between">
-          {editing ? (
+      {editing ? (
+        <View className="mt-3 flex-row items-center gap-2">
+          <View className="flex-1 flex-row items-center rounded-xl border border-accent bg-bg px-3">
+            <Text className="font-sans-medium text-body text-muted">₹</Text>
             <TextInput
               autoFocus
               value={draft}
               onChangeText={setDraft}
-              onBlur={() => {
-                const rupees = Number(draft.replace(/\D/g, ""));
-                if (Number.isFinite(rupees)) onCommit(rupees * 100);
-              }}
+              onSubmitEditing={commit}
+              onBlur={commit}
               keyboardType="number-pad"
               returnKeyType="done"
-              onSubmitEditing={() => {
-                const rupees = Number(draft.replace(/\D/g, ""));
-                if (Number.isFinite(rupees)) onCommit(rupees * 100);
-              }}
-              placeholder={`Limit in rupees, currently ${formatCompact(budget.limitMinor)}`}
-              placeholderTextColor={palette.inkMuted}
-              className="font-mono-medium flex-1 text-meta text-ink"
+              placeholder="New limit"
+              placeholderTextColor={palette.muted}
+              className="font-sans-medium h-11 flex-1 px-1 text-body text-fg"
+              style={{ minWidth: 0 }}
+              accessibilityLabel={`New monthly limit for ${category?.name ?? "category"}`}
             />
-          ) : (
-            <Text
-              onPress={onToggleEdit}
-              accessibilityRole="button"
-              className="font-sans text-meta text-ink-muted"
-            >
-              of {formatCompact(budget.limitMinor)} · tap to change
-            </Text>
-          )}
+          </View>
+        </View>
+      ) : (
+        <View className="mt-3 flex-row items-center justify-between">
           <Text
-            className={`font-mono text-margin ${over ? "text-alert" : "text-ink-muted"}`}
+            className={`font-sans-medium text-label ${over ? "text-danger" : "text-muted"}`}
           >
-            {percent}%
+            {over
+              ? `${formatMoney(-remaining)} over budget`
+              : `${formatMoney(remaining)} left`}
+          </Text>
+          {/* Accent-coloured and separated out — as muted body text inside a
+              sentence it didn't read as something you could tap. */}
+          <Text
+            onPress={onStartEdit}
+            accessibilityRole="button"
+            accessibilityLabel={`Change limit for ${category?.name ?? "category"}`}
+            className="font-sans-semibold text-label text-accent"
+          >
+            Change limit
           </Text>
         </View>
-      </View>
-    </View>
+      )}
+    </Card>
   );
 }

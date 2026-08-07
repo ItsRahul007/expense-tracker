@@ -1,33 +1,29 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { Chip } from "@/components/keypad/chip";
-import { NumericKeypad } from "@/components/keypad/numeric-keypad";
-import {
-  Amount,
-  DoubleRule,
-  Eyebrow,
-  LedgerSheet,
-  MetaRow,
-  Rule,
-} from "@/components/ledger";
+import { Button, Card, Chip, IconBadge } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
-import { digitsToMinor, formatRelativeDay } from "@/lib/format";
+import {
+  digitsToMinor,
+  formatAmountEntry,
+  formatMoney,
+  formatRelativeDay,
+} from "@/lib/format";
 import { currentMonth } from "@/lib/month";
 import { useAddTransaction, useCategories, useTransactions } from "@/queries";
 import type { ID } from "@/types/domain";
 
-/** How far back the day chips reach. A full date picker is deliberately not here
- *  — "I forgot to log yesterday's auto" is the real case, and a week of chips
- *  covers it without a new dependency or a modal inside a modal. Older dates are
- *  editable from the entry detail screen. */
-const DAY_CHOICES = 7;
+/** How far back the day chips reach. A full date picker isn't here because
+ *  "I forgot to log yesterday's auto" is the real case and a week covers it;
+ *  older dates stay editable from the expense detail screen. */
+const DAY_CHOICES = 5;
 
 function dayStart(offset: number): number {
   const d = new Date();
   d.setDate(d.getDate() - offset);
-  d.setHours(12, 0, 0, 0); // midday, so DST shifts can't move the calendar day
+  d.setHours(12, 0, 0, 0); // midday, so a DST shift can't move the calendar day
   return d.getTime();
 }
 
@@ -41,17 +37,15 @@ export default function AddScreen() {
   const [chosenCategory, setChosenCategory] = useState<ID | null>(null);
   const [dayOffset, setDayOffset] = useState(0);
   const [note, setNote] = useState("");
-  const [picker, setPicker] = useState<"category" | "date" | null>(null);
 
   /** Defaults to the last category used, which is right far more often than
-   *  alphabetical order is — the two-tap path depends on it. */
+   *  alphabetical order — it makes the common case a two-field form. */
   const categoryId =
     chosenCategory ?? recent?.[0]?.categoryId ?? categories?.[0]?.id ?? null;
-  const category = categories?.find((c) => c.id === categoryId);
 
   const amountMinor = digitsToMinor(digits);
   const occurredAt = useMemo(() => dayStart(dayOffset), [dayOffset]);
-  const canSave = amountMinor > 0 && categoryId !== null && !addTransaction.isPending;
+  const canSave = amountMinor > 0 && categoryId !== null;
 
   const save = async () => {
     if (!canSave || categoryId === null) return;
@@ -65,121 +59,125 @@ export default function AddScreen() {
   };
 
   return (
-    <View className="flex-1 bg-paper">
-      <View className="h-12 flex-row items-center justify-between pl-4 pr-7">
-        <Eyebrow>New entry</Eyebrow>
+    <View className="flex-1 bg-bg">
+      <View className="flex-row items-center justify-between px-4 pb-2 pt-4">
+        <Text className="font-sans-bold text-title text-fg">New expense</Text>
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
+          accessibilityLabel="Close"
           hitSlop={10}
-          style={({ pressed }) => (pressed ? { opacity: 0.5 } : undefined)}
+          className="h-9 w-9 items-center justify-center rounded-full border border-border bg-card"
+          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
         >
-          <Text className="font-sans-semibold text-meta text-ink-muted">Cancel</Text>
+          <Ionicons name="close" size={18} color={palette.fg} />
         </Pressable>
       </View>
 
-      {/* Wraps only the figure and the meta rows: the alignment rule must not
-          run down through the keypad's right-hand column. */}
-      <LedgerSheet>
-        <View className="flex-1 justify-end pb-5">
-          <View className="flex-row items-end justify-between pl-4 pr-7">
-            <Eyebrow className="pb-3">Amount ₹</Eyebrow>
-            <Amount
-              amountMinor={amountMinor}
-              size="display"
-              tone={amountMinor > 0 ? "ink" : "muted"}
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Amount first and largest — it's the only field that always needs
+            filling, so it gets its own card and the numeric keyboard. */}
+        <Card className="py-5">
+          <Text className="font-sans-medium text-label text-muted">Amount</Text>
+          {/* The symbol is a fixed-width sibling and the field takes the rest of
+              the row: a TextInput sized by its content stretches past the card on
+              web and clips long amounts on native. */}
+          <View className="mt-1 flex-row items-center">
+            <Text className="font-sans-bold text-display text-muted">₹</Text>
+            <TextInput
+              autoFocus
+              value={digits === "" ? "" : formatAmountEntry(amountMinor)}
+              onChangeText={(next) => setDigits(next.replace(/\D/g, "").slice(0, 9))}
+              keyboardType="number-pad"
+              placeholder="0.00"
+              placeholderTextColor={palette.muted}
+              textAlign="right"
+              className="font-sans-bold ml-2 flex-1 text-display text-fg"
+              // minWidth: 0 — a flex item's min-width defaults to its content
+              // size, so without this the field refuses to shrink and pushes the
+              // whole card past the screen edge on long amounts.
+              style={{ paddingVertical: 0, minWidth: 0 }}
+              accessibilityLabel="Amount in rupees"
             />
           </View>
+          <Text className="font-sans mt-2 text-caption text-muted">
+            Digits fill from the right — type 1240 for ₹12.40
+          </Text>
+        </Card>
+
+        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+          Category
+        </Text>
+        <View className="flex-row flex-wrap gap-2">
+          {(categories ?? []).map((category) => {
+            const selected = category.id === categoryId;
+            return (
+              <Pressable
+                key={category.id}
+                onPress={() => setChosenCategory(category.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={category.name}
+                className={`w-[31%] items-center gap-1.5 rounded-2xl border py-3 ${
+                  selected ? "border-accent bg-accent/10" : "border-border bg-card"
+                }`}
+                style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+              >
+                <IconBadge icon={category.icon} color={category.color} size="sm" />
+                <Text
+                  numberOfLines={1}
+                  className={`font-sans-medium px-1 text-caption ${
+                    selected ? "text-accent" : "text-muted"
+                  }`}
+                >
+                  {category.name}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
-        <MetaRow
-          label="Category"
-          value={category?.name ?? "—"}
-          onPress={() => setPicker(picker === "category" ? null : "category")}
-          expanded={
-            picker === "category" ? (
-              <View className="flex-row flex-wrap gap-2">
-                {(categories ?? []).map((c) => (
-                  <Chip
-                    key={c.id}
-                    label={c.code}
-                    selected={c.id === categoryId}
-                    onPress={() => {
-                      setChosenCategory(c.id);
-                      setPicker(null);
-                    }}
-                  />
-                ))}
-              </View>
-            ) : null
-          }
-        />
+        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+          Date
+        </Text>
+        <View className="flex-row flex-wrap gap-2">
+          {Array.from({ length: DAY_CHOICES }, (_, offset) => (
+            <Chip
+              key={offset}
+              label={formatRelativeDay(dayStart(offset))}
+              selected={offset === dayOffset}
+              onPress={() => setDayOffset(offset)}
+            />
+          ))}
+        </View>
 
-        <MetaRow
-          label="Date"
-          value={formatRelativeDay(occurredAt)}
-          onPress={() => setPicker(picker === "date" ? null : "date")}
-          expanded={
-            picker === "date" ? (
-              <View className="flex-row flex-wrap gap-2">
-                {Array.from({ length: DAY_CHOICES }, (_, offset) => (
-                  <Chip
-                    key={offset}
-                    label={
-                      offset === 0
-                        ? "Today"
-                        : offset === 1
-                          ? "Yest"
-                          : formatRelativeDay(dayStart(offset)).slice(0, 6)
-                    }
-                    selected={offset === dayOffset}
-                    onPress={() => {
-                      setDayOffset(offset);
-                      setPicker(null);
-                    }}
-                  />
-                ))}
-              </View>
-            ) : null
-          }
-        />
-
-        <Rule />
-        <View className="h-12 flex-row items-center pl-4 pr-7">
-          <Eyebrow>Note</Eyebrow>
+        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+          Note
+        </Text>
+        <Card padded={false}>
           <TextInput
             value={note}
             onChangeText={setNote}
-            placeholder="Optional"
+            placeholder="Where was it? (optional)"
+            placeholderTextColor={palette.muted}
             returnKeyType="done"
-            className="font-sans-medium ml-4 flex-1 text-right text-row text-ink"
-            // Native prop — cannot read the CSS variable, so it comes from the
-            // mirrored JS palette.
-            placeholderTextColor={palette.inkMuted}
+            className="font-sans min-h-[52px] px-4 py-3 text-body text-fg"
+          />
+        </Card>
+
+        <View className="mt-8">
+          <Button
+            label={`Save ${amountMinor > 0 ? formatMoney(amountMinor) : "expense"}`}
+            onPress={save}
+            disabled={!canSave}
+            loading={addTransaction.isPending}
           />
         </View>
-      </LedgerSheet>
-
-      <NumericKeypad
-        onDigits={(next) => setDigits((current) => (current + next).slice(0, 9))}
-        onBackspace={() => setDigits((current) => current.slice(0, -1))}
-      />
-
-      <DoubleRule />
-      <Pressable
-        onPress={save}
-        disabled={!canSave}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !canSave }}
-        className="h-14 items-center justify-center"
-        style={({ pressed }) => ({
-          opacity: !canSave ? 0.3 : pressed ? 0.5 : 1,
-        })}
-      >
-        <Text className="font-sans-semibold text-eyebrow uppercase tracking-eyebrow text-ink">
-          {addTransaction.isPending ? "Recording…" : "Record entry"}
-        </Text>
-      </Pressable>
+      </ScrollView>
     </View>
   );
 }
