@@ -7,10 +7,12 @@ import { CategoryPicker } from "@/components/category-picker";
 import { Button, Card, Chip, ScreenHeader } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import {
-  digitsToMinor,
-  formatAmountEntry,
+  amountTextToMinor,
+  formatAmountFieldValue,
   formatRelativeDay,
   formatTime,
+  minorToAmountText,
+  sanitizeAmountInput,
 } from "@/lib/format";
 import {
   useCategories,
@@ -38,7 +40,7 @@ export default function TransactionScreen() {
   const updateTransaction = useUpdateTransaction();
   const deleteTransaction = useDeleteTransaction();
 
-  const [digits, setDigits] = useState<string | null>(null);
+  const [amountText, setAmountText] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<ID | null>(null);
   const [occurredAt, setOccurredAt] = useState<number | null>(null);
   const [note, setNote] = useState("");
@@ -47,15 +49,15 @@ export default function TransactionScreen() {
   // Seed the editable copy once the record arrives, then leave it alone so a
   // refetch can't overwrite what's being typed.
   useEffect(() => {
-    if (transaction && digits === null) {
-      setDigits(String(transaction.amountMinor));
+    if (transaction && amountText === null) {
+      setAmountText(minorToAmountText(transaction.amountMinor));
       setCategoryId(transaction.categoryId);
       setOccurredAt(transaction.occurredAt);
       setNote(transaction.note ?? "");
     }
-  }, [transaction, digits]);
+  }, [transaction, amountText]);
 
-  const amountMinor = digits === null ? 0 : digitsToMinor(digits);
+  const amountMinor = amountText === null ? 0 : amountTextToMinor(amountText);
   const category = categories?.find((c) => c.id === categoryId);
 
   /** The original date may predate the chip window, so it's offered as its own
@@ -103,7 +105,7 @@ export default function TransactionScreen() {
     ]);
   };
 
-  if (isPending || !transaction || digits === null) {
+  if (isPending || !transaction || amountText === null) {
     return (
       <View className="flex-1 bg-bg">
         <ScreenHeader title="Expense" onBack={() => router.back()} />
@@ -129,9 +131,9 @@ export default function TransactionScreen() {
           <View className="mt-1 flex-row items-center">
             <Text className="font-sans-bold text-display text-muted">₹</Text>
             <TextInput
-              value={formatAmountEntry(amountMinor)}
-              onChangeText={(next) => setDigits(next.replace(/\D/g, "").slice(0, 9))}
-              keyboardType="number-pad"
+              value={formatAmountFieldValue(amountText)}
+              onChangeText={(next) => setAmountText(sanitizeAmountInput(next))}
+              keyboardType="decimal-pad"
               textAlign="right"
               className="font-sans-bold ml-2 flex-1 text-display text-fg"
               // See the note in add.tsx — without minWidth: 0 the field cannot

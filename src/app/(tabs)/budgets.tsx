@@ -35,6 +35,12 @@ export default function BudgetsScreen() {
   const totalSpent = rows.reduce((sum, b) => sum + b.spentMinor, 0);
   const overCount = rows.filter((b) => b.spentMinor > b.limitMinor).length;
 
+  const budgetedIds = useMemo(
+    () => new Set(rows.map((b) => b.categoryId)),
+    [rows],
+  );
+  const unbudgeted = (categories ?? []).filter((c) => !budgetedIds.has(c.id));
+
   return (
     <View className="flex-1 bg-bg">
       <ScreenHeader title="Budgets" />
@@ -102,8 +108,105 @@ export default function BudgetsScreen() {
             </View>
           </>
         )}
+
+        {unbudgeted.length > 0 ? (
+          <View className="mt-6">
+            <SectionTitle title="Add a budget" />
+            <View className="gap-3">
+              {unbudgeted.map((category) => (
+                <AddBudgetCard
+                  key={category.id}
+                  category={category}
+                  editing={editing === category.id}
+                  onStartEdit={() => setEditing(category.id)}
+                  onCancel={() => setEditing(null)}
+                  onCommit={(limitMinor) => {
+                    upsertBudget.mutate({
+                      categoryId: category.id,
+                      month,
+                      limitMinor,
+                    });
+                    setEditing(null);
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
     </View>
+  );
+}
+
+function AddBudgetCard({
+  category,
+  editing,
+  onStartEdit,
+  onCancel,
+  onCommit,
+}: {
+  category: Category;
+  editing: boolean;
+  onStartEdit: () => void;
+  onCancel: () => void;
+  onCommit: (limitMinor: number) => void;
+}) {
+  const palette = usePalette();
+  const [draft, setDraft] = useState("");
+
+  const commit = () => {
+    const rupees = Number(draft.replace(/\D/g, ""));
+    if (Number.isFinite(rupees) && draft.trim() !== "") onCommit(rupees * 100);
+    else onCancel();
+  };
+
+  return (
+    <Card>
+      <View className="flex-row items-center gap-3">
+        <IconBadge icon={category.icon} color={category.color} />
+        <View className="flex-1">
+          <Text className="font-sans-semibold text-body text-fg">
+            {category.name}
+          </Text>
+          <Text className="font-sans mt-0.5 text-label text-muted">
+            No budget set
+          </Text>
+        </View>
+      </View>
+
+      {editing ? (
+        <View className="mt-3 flex-row items-center gap-2">
+          <View className="flex-1 flex-row items-center rounded-xl border border-accent bg-bg px-3">
+            <Text className="font-sans-medium text-body text-muted">₹</Text>
+            <TextInput
+              autoFocus
+              value={draft}
+              onChangeText={setDraft}
+              onSubmitEditing={commit}
+              onBlur={commit}
+              keyboardType="number-pad"
+              returnKeyType="done"
+              placeholder="Monthly limit"
+              placeholderTextColor={palette.muted}
+              className="font-sans-medium h-11 flex-1 px-1 text-body text-fg"
+              style={{ minWidth: 0 }}
+              accessibilityLabel={`Monthly limit for ${category.name}`}
+            />
+          </View>
+        </View>
+      ) : (
+        <View className="mt-3 flex-row items-center justify-end">
+          <Text
+            onPress={onStartEdit}
+            accessibilityRole="button"
+            accessibilityLabel={`Set limit for ${category.name}`}
+            className="font-sans-semibold text-label text-accent"
+          >
+            Set limit
+          </Text>
+        </View>
+      )}
+    </Card>
   );
 }
 

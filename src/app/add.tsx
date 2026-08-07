@@ -8,10 +8,11 @@ import { CategoryPicker } from "@/components/category-picker";
 import { Button, Card, Chip } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import {
-  digitsToMinor,
-  formatAmountEntry,
+  amountTextToMinor,
+  formatAmountFieldValue,
   formatMoney,
   formatRelativeDay,
+  sanitizeAmountInput,
 } from "@/lib/format";
 import { currentMonth } from "@/lib/month";
 import { useAddTransaction, useCategories, useTransactions } from "@/queries";
@@ -35,7 +36,7 @@ export default function AddScreen() {
   const { data: recent } = useTransactions(currentMonth());
   const addTransaction = useAddTransaction();
 
-  const [digits, setDigits] = useState("");
+  const [amountText, setAmountText] = useState("");
   const [chosenCategory, setChosenCategory] = useState<ID | null>(null);
   const [dayOffset, setDayOffset] = useState(0);
   const [note, setNote] = useState("");
@@ -46,7 +47,7 @@ export default function AddScreen() {
   const categoryId =
     chosenCategory ?? recent?.[0]?.categoryId ?? categories?.[0]?.id ?? null;
 
-  const amountMinor = digitsToMinor(digits);
+  const amountMinor = amountTextToMinor(amountText);
   const occurredAt = useMemo(() => dayStart(dayOffset), [dayOffset]);
   const canSave = amountMinor > 0 && categoryId !== null;
 
@@ -92,10 +93,10 @@ export default function AddScreen() {
             <Text className="font-sans-bold text-display text-muted">₹</Text>
             <TextInput
               autoFocus
-              value={digits === "" ? "" : formatAmountEntry(amountMinor)}
-              onChangeText={(next) => setDigits(next.replace(/\D/g, "").slice(0, 9))}
-              keyboardType="number-pad"
-              placeholder="0.00"
+              value={formatAmountFieldValue(amountText)}
+              onChangeText={(next) => setAmountText(sanitizeAmountInput(next))}
+              keyboardType="decimal-pad"
+              placeholder="0"
               placeholderTextColor={palette.muted}
               textAlign="right"
               className="font-sans-bold ml-2 flex-1 text-display text-fg"
@@ -107,7 +108,7 @@ export default function AddScreen() {
             />
           </View>
           <Text className="font-sans mt-2 text-caption text-muted">
-            Digits fill from the right — type 1240 for ₹12.40
+            Type the rupee amount — tap . to add paise
           </Text>
         </Card>
 

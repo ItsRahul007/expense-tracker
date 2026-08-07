@@ -45,19 +45,6 @@ export function formatMoney(
   return `${sign ? "−" : ""}${symbol ? "₹" : ""}${body}`;
 }
 
-/**
- * Live value for an amount field: grouped rupees, always two decimals.
- *
- * Distinct from `formatMoney` because a field must not drop the decimals while
- * you're typing — entering 1200 would otherwise read "12" the instant the paise
- * hit zero, which looks like the input ate two keystrokes.
- */
-export function formatAmountEntry(amountMinor: number): string {
-  const abs = Math.abs(Math.trunc(amountMinor));
-  const rupees = groupIndian(String(Math.floor(abs / 100)));
-  return `${rupees}.${String(abs % 100).padStart(2, "0")}`;
-}
-
 /** Always two decimals, ungrouped, no symbol: "1240.50". For CSV export. */
 export function formatAmountExact(amountMinor: number): string {
   const abs = Math.abs(Math.trunc(amountMinor));
@@ -73,12 +60,52 @@ export function formatAmountLabel(amountMinor: number): string {
 }
 
 /**
- * Keypad/field digits → minor units. Digits fill from the right, so "1240"
- * means ₹12.40 — the way a card terminal reads.
+ * Cleans whatever the amount `TextInput` reports on each keystroke into a
+ * valid rupee-decimal string: digits, at most one ".", at most two digits
+ * after it. Commas come from `formatAmountFieldValue`'s own grouping, so
+ * they're stripped before anything else — they're never meaningful input.
+ *
+ * Typing "90" now means ninety rupees, full stop; a decimal only appears if
+ * the person types "." themselves, via the field's own dot key.
  */
-export function digitsToMinor(digits: string): number {
-  const cleaned = digits.replace(/\D/g, "").slice(0, 9);
-  return cleaned === "" ? 0 : Number(cleaned);
+export function sanitizeAmountInput(raw: string): string {
+  const cleaned = raw.replace(/,/g, "").replace(/[^0-9.]/g, "");
+  const dot = cleaned.indexOf(".");
+  if (dot === -1) return cleaned.slice(0, 7);
+  const rupees = cleaned.slice(0, dot).slice(0, 7);
+  const paise = cleaned.slice(dot + 1).replace(/\./g, "").slice(0, 2);
+  return `${rupees}.${paise}`;
+}
+
+/** Amount field text → minor units. "90" → 9000, "90.5" → 9050, "" → 0. */
+export function amountTextToMinor(text: string): number {
+  const [rupeesPart, paisePart = ""] = text.split(".");
+  const rupees = rupeesPart === "" ? 0 : Number(rupeesPart);
+  const paise = paisePart === "" ? 0 : Number(paisePart.padEnd(2, "0").slice(0, 2));
+  return rupees * 100 + paise;
+}
+
+/**
+ * Live display for the amount field: grouped rupees, decimals shown only as
+ * far as the person has actually typed them — no forced ".00" the way
+ * `formatAmountExact` has, since here it would look like a phantom keystroke.
+ */
+export function formatAmountFieldValue(text: string): string {
+  if (text === "") return "";
+  const [rupeesPart, paisePart] = text.split(".");
+  const rupees = groupIndian(rupeesPart === "" ? "0" : rupeesPart);
+  return paisePart === undefined ? rupees : `${rupees}.${paisePart}`;
+}
+
+/** Minor units → amount field text, for seeding the field from a saved
+ *  expense: "9000" → "90", "9050" → "90.5". Whole rupees stay undecorated,
+ *  matching how the field looks once a person has actually typed a value. */
+export function minorToAmountText(amountMinor: number): string {
+  if (amountMinor === 0) return "";
+  const abs = Math.abs(Math.trunc(amountMinor));
+  const rupees = Math.floor(abs / 100);
+  const paise = abs % 100;
+  return paise === 0 ? String(rupees) : `${rupees}.${String(paise).padStart(2, "0")}`;
 }
 
 const MONTHS = [
