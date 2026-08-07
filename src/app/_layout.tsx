@@ -146,6 +146,17 @@ function RootNavigator() {
             sheetAllowedDetents: [0.6],
           }}
         />
+        <Stack.Screen
+          name="delete-budget"
+          options={{
+            presentation: "formSheet",
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 24,
+            // Just an icon, a line of text and two buttons — a small detent
+            // keeps it from looming like the full add-budget form.
+            sheetAllowedDetents: [0.3],
+          }}
+        />
         <Stack.Screen name="search" options={{ presentation: "modal" }} />
         <Stack.Screen name="categories" options={{ presentation: "modal" }} />
         <Stack.Screen name="transaction/[id]" />

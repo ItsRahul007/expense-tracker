@@ -1,7 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Text, TextInput, View } from "react-native";
 
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
@@ -66,15 +65,7 @@ export default function AddScreen() {
     <View className="flex-1 bg-bg">
       <View className="flex-row items-center justify-between px-4 pb-2 pt-4">
         <Text className="font-sans-bold text-title text-fg">New expense</Text>
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          hitSlop={10}
-          className="h-9 w-9 items-center justify-center rounded-full border border-border bg-card active:opacity-60"
-        >
-          <Ionicons name="close" size={18} color={palette.fg} />
-        </Pressable>
+        <View />
       </View>
 
       <ScrollView

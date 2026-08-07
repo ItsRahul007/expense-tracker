@@ -1,5 +1,7 @@
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import {
   Card,
@@ -96,6 +98,12 @@ export default function BudgetsScreen() {
                       upsertBudget.mutate({ ...budget, limitMinor });
                       setEditing(null);
                     }}
+                    onDelete={() =>
+                      router.push({
+                        pathname: "/delete-budget",
+                        params: { categoryId: budget.categoryId, month },
+                      })
+                    }
                   />
                 ))}
               </View>
@@ -186,6 +194,7 @@ function BudgetCard({
   onStartEdit,
   onCancel,
   onCommit,
+  onDelete,
 }: {
   budget: BudgetStatus;
   category?: Category;
@@ -193,6 +202,7 @@ function BudgetCard({
   onStartEdit: () => void;
   onCancel: () => void;
   onCommit: (limitMinor: number) => void;
+  onDelete: () => void;
 }) {
   const palette = usePalette();
   const [draft, setDraft] = useState("");
@@ -228,6 +238,15 @@ function BudgetCard({
         >
           {Math.round(fraction * 100)}%
         </Text>
+        <Pressable
+          onPress={onDelete}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete budget for ${category?.name ?? "category"}`}
+          hitSlop={8}
+          className="ml-1 h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+        >
+          <Ionicons name="trash-outline" size={17} color={palette.muted} />
+        </Pressable>
       </View>
 
       <View className="mt-3">
