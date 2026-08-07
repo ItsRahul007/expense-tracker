@@ -137,6 +137,15 @@ function RootNavigator() {
             sheetAllowedDetents: [0.92],
           }}
         />
+        <Stack.Screen
+          name="add-budget"
+          options={{
+            presentation: "formSheet",
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 24,
+            sheetAllowedDetents: [0.6],
+          }}
+        />
         <Stack.Screen name="search" options={{ presentation: "modal" }} />
         <Stack.Screen name="categories" options={{ presentation: "modal" }} />
         <Stack.Screen name="transaction/[id]" />

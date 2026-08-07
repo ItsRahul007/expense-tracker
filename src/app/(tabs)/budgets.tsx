@@ -35,12 +35,6 @@ export default function BudgetsScreen() {
   const totalSpent = rows.reduce((sum, b) => sum + b.spentMinor, 0);
   const overCount = rows.filter((b) => b.spentMinor > b.limitMinor).length;
 
-  const budgetedIds = useMemo(
-    () => new Set(rows.map((b) => b.categoryId)),
-    [rows],
-  );
-  const unbudgeted = (categories ?? []).filter((c) => !budgetedIds.has(c.id));
-
   return (
     <View className="flex-1 bg-bg">
       <ScreenHeader title="Budgets" />
@@ -108,31 +102,6 @@ export default function BudgetsScreen() {
             </View>
           </>
         )}
-
-        {unbudgeted.length > 0 ? (
-          <View className="mt-6">
-            <SectionTitle title="Add a budget" />
-            <View className="gap-3">
-              {unbudgeted.map((category) => (
-                <AddBudgetCard
-                  key={category.id}
-                  category={category}
-                  editing={editing === category.id}
-                  onStartEdit={() => setEditing(category.id)}
-                  onCancel={() => setEditing(null)}
-                  onCommit={(limitMinor) => {
-                    upsertBudget.mutate({
-                      categoryId: category.id,
-                      month,
-                      limitMinor,
-                    });
-                    setEditing(null);
-                  }}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
       </ScrollView>
     </View>
   );
@@ -229,7 +198,8 @@ function BudgetCard({
   const [draft, setDraft] = useState("");
 
   const over = budget.spentMinor > budget.limitMinor;
-  const fraction = budget.limitMinor > 0 ? budget.spentMinor / budget.limitMinor : 0;
+  const fraction =
+    budget.limitMinor > 0 ? budget.spentMinor / budget.limitMinor : 0;
   const remaining = budget.limitMinor - budget.spentMinor;
 
   const commit = () => {

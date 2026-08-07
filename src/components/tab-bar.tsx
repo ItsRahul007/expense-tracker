@@ -32,6 +32,8 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const left = state.routes.slice(0, 2);
   const right = state.routes.slice(2);
 
+  const onBudgets = state.routes[state.index]?.name === "budgets";
+
   const renderTab = (route: (typeof state.routes)[number]) => {
     const index = state.routes.findIndex((r) => r.key === route.key);
     const focused = state.index === index;
@@ -79,9 +81,9 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         {/* Raised, so it reads as an action rather than a fifth destination. */}
         <View className="w-[76px] items-center">
           <Pressable
-            onPress={() => router.push("/add")}
+            onPress={() => router.push(onBudgets ? "/add-budget" : "/add")}
             accessibilityRole="button"
-            accessibilityLabel="Add expense"
+            accessibilityLabel={onBudgets ? "Add budget" : "Add expense"}
             className="-mt-6 h-14 w-14 items-center justify-center rounded-full bg-brand active:opacity-80"
             // Object style: the shadow was previously inside a function-form
             // `style`, which NativeWind drops when className is present — so the
