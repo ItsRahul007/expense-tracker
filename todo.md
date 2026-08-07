@@ -139,7 +139,7 @@ a write only names `['tx']` and `['budget']`.
 
 - [ ] Write down your key scheme before implementing. Seriously — it's five minutes now
       versus a week of stale screens.
-- [ ] Wire invalidation on every mutation. `useUpsertCategory` needs `['category']` **and**
+- [x] Wire invalidation on every mutation. `useUpsertCategory` needs `['category']` **and**
       `['tx']`, because rows render the category's name, icon and colour.
 
 ### Four questions I deliberately haven't answered
@@ -169,35 +169,35 @@ subset of what TanStack already gives you.
 
 ### Queries
 
-- [ ] `useCategories()` → `Category[]`, ordered by `sortOrder`
-- [ ] `useTransactions(month | null, filters?)` → `Transaction[]`, **newest first**.
+- [x] `useCategories()` → `Category[]`, ordered by `sortOrder`
+- [x] `useTransactions(month | null, filters?)` → `Transaction[]`, **newest first**.
       `null` month means all history — that's how search works. Filters: `text` (matches
       note _and_ category name, case-insensitive), `categoryIds`, `minMinor`, `maxMinor`,
       `from`, `to`.
-- [ ] `useMonthSummary(month)` → `{ totalMinor, byCategory }`, **`byCategory` sorted
+- [x] `useMonthSummary(month)` → `{ totalMinor, byCategory }`, **`byCategory` sorted
       descending** — the Stats screen doesn't re-sort.
-- [ ] `useMonthTrend(months[])` → one point per month **in the order given**, including
+- [x] `useMonthTrend(months[])` → one point per month **in the order given**, including
       zero-spend months. Don't drop empty months or the chart's x-axis lies.
-- [ ] `useBudgets(month)` → `BudgetStatus[]` — budgets joined with actual spend, ordered by
+- [x] `useBudgets(month)` → `BudgetStatus[]` — budgets joined with actual spend, ordered by
       category `sortOrder`
-- [ ] `useTransaction(id)` → `Transaction | null`
-- [ ] `useSetting(key)` → typed by key
-- [ ] `useKnownMonths()` → `Month[]` ascending, months containing ≥1 expense (drives how
+- [x] `useTransaction(id)` → `Transaction | null`
+- [x] `useSetting(key)` → typed by key
+- [x] `useKnownMonths()` → `Month[]` ascending, months containing ≥1 expense (drives how
       far back the month pager lets you go)
 
 ### Mutations
 
-- [ ] `useAddTransaction()` — takes `NewTransaction`; **you** assign the id
-- [ ] `useUpdateTransaction()` — takes `TransactionPatch`
-- [ ] `useDeleteTransaction()` — takes an `ID`
-- [ ] `useUpsertBudget()` — note the mock treats `limitMinor: 0` as "remove the budget"
-- [ ] `useUpsertCategory()` — insert **or** update on `id`. This is what custom categories
+- [x] `useAddTransaction()` — takes `NewTransaction`; **you** assign the id
+- [x] `useUpdateTransaction()` — takes `TransactionPatch`
+- [x] `useDeleteTransaction()` — takes an `ID`
+- [x] `useUpsertBudget()` — note the mock treats `limitMinor: 0` as "remove the budget"
+- [x] `useUpsertCategory()` — insert **or** update on `id`. This is what custom categories
       call.
-- [ ] `useSetSetting()` — takes `{ key, value }`
+- [x] `useSetSetting()` — takes `{ key, value }`
 
 ### One-shot
 
-- [ ] `exportAllData(): Promise<string>` — CSV, columns `Date,Category,Amount,Note`,
+- [x] `exportAllData(): Promise<string>` — CSV, columns `Date,Category,Amount,Note`,
       oldest first, amounts as decimal rupees via `formatAmountExact`, and quote-escape
       anything containing a comma or quote. The UI owns the file write and share sheet;
       you own the string.
