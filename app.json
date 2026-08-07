@@ -45,7 +45,8 @@
         {
           "enableFileSharing": true
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,
