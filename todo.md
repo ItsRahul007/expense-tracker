@@ -212,15 +212,22 @@ The UI can now create categories from three places: Settings → Categories, and
 both the add and edit expense screens (the dashed **New** tile). All three go through
 `useUpsertCategory`. Consequences for your schema:
 
-- [ ] Ids are **slugs generated from the name** (`"Pet care"` → `c-pet-care`), with a
+- [x] Ids are **slugs generated from the name** (`"Pet care"` → `c-pet-care`), with a
       numeric suffix on collision. So ids are text, not integers, and not sequential.
       `src/components/category-editor.tsx` has the logic.
-- [ ] Seeded and user-created categories are **the same table**. If you want to protect the
+- [x] Seeded and user-created categories are **the same table**. If you want to protect the
       defaults from editing, you need a flag — decide whether you care.
-- [ ] **Deletion is deliberately not in the UI.** Deleting a category with expenses
+      Decided: no flag, for now. Nothing in the UI can edit or delete an existing
+      category yet, so there's nothing to protect a default *against*. Add
+      `isDefault` when an edit/delete screen actually ships.
+- [x] **Deletion is deliberately not in the UI.** Deleting a category with expenses
       attached needs a rule: reassign to "Other", block it, or cascade. That's a data
       decision, so it's yours. Pick one before you add a delete button, and make sure the
       FK constraint agrees with whatever you pick.
+      Decided: block it. Both FKs stay `ON DELETE no action` (made explicit and
+      documented in `src/db/schema/schema.ts`) — deleting a referenced category
+      throws instead of silently reassigning or cascading expense history away.
+      A future delete button must check for zero referencing rows first.
 
 ---
 
