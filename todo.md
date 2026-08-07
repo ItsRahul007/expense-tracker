@@ -36,14 +36,14 @@ Read the versioned docs, not blog posts: <https://docs.expo.dev/versions/v55.0.0
 
 ### Config
 
-- [ ] `babel.config.js` — add `babel-plugin-inline-import` configured for `.sql`, so
+- [x] `babel.config.js` — add `babel-plugin-inline-import` configured for `.sql`, so
       `drizzle-kit`'s generated migrations can be `import`ed as strings and bundled.
       Careful: this file already has `babel-preset-expo` and `nativewind/babel`. Adding
       a plugin, not replacing the presets.
-- [ ] `metro.config.js` — add `sql` to `resolver.sourceExts`. It already has the
+- [x] `metro.config.js` — add `sql` to `resolver.sourceExts`. It already has the
       NativeWind wrapper; keep it.
-- [ ] `drizzle.config.ts` — `dialect: "sqlite"`, `driver: "expo"`, schema path, out dir.
-- [ ] Add a `db:generate` script so migration generation isn't a command you have to
+- [x] `drizzle.config.ts` — `dialect: "sqlite"`, `driver: "expo"`, schema path, out dir.
+- [x] Add a `db:generate` script so migration generation isn't a command you have to
       remember.
 
 > ⚠️ Whatever you do to `babel.config.js`, clear the cache afterwards
@@ -57,13 +57,13 @@ Read the versioned docs, not blog posts: <https://docs.expo.dev/versions/v55.0.0
 Match `src/types/domain.ts` — that file is the contract the UI codes against. Reading it
 first will save you a rewrite.
 
-- [ ] **`categories`** — `id` (text PK), `name` (text), `icon` (text), `color` (text),
+- [x] **`categories`** — `id` (text PK), `name` (text), `icon` (text), `color` (text),
       `sortOrder` (integer)
-- [ ] **`transactions`** — `id` (text PK), `amountMinor` (integer), `categoryId`
+- [x] **`transactions`** — `id` (text PK), `amountMinor` (integer), `categoryId`
       (text, FK → categories.id), `occurredAt` (integer), `note` (text, nullable)
-- [ ] **`budgets`** — `categoryId` + `month` as a **composite primary key**,
+- [x] **`budgets`** — `categoryId` + `month` as a **composite primary key**,
       `limitMinor` (integer). `month` is the string `"2026-08"`.
-- [ ] **`settings`** — key/value. Currently only `theme` (`"system" | "light" | "dark"`).
+- [x] **`settings`** — key/value. Currently only `theme` (`"system" | "light" | "dark"`).
 
 ### Non-negotiables
 
@@ -74,13 +74,13 @@ the file:
   `SUM()` over floats accumulates error and a month of expenses eventually renders as
   ₹41,999.99999998. Decimals exist only in `src/lib/format.ts`.
 - **`occurredAt` is epoch milliseconds** stored as INTEGER, so date filters and month
-  bucketing are integer comparisons. Note the UI groups by *local* calendar day — see
+  bucketing are integer comparisons. Note the UI groups by _local_ calendar day — see
   `src/lib/month.ts`, and don't "fix" that to UTC or an 11pm expense will jump days.
 
 ### Indexes
 
-- [ ] `transactions(occurredAt)` — every list and aggregate filters on a month range.
-- [ ] `transactions(categoryId)` — the category filter and every budget join.
+- [x] `transactions(occurredAt)` — every list and aggregate filters on a month range.
+- [x] `transactions(categoryId)` — the category filter and every budget join.
 
 ---
 
@@ -120,7 +120,7 @@ works, and it's the one decision that will bite you if you get it wrong, because
 **nothing tells TanStack that a table changed. You are the cache-coherence layer.**
 
 Adding one expense has to invalidate the home list, the month summary, the 6-month trend,
-*and* the affected budget's progress. Get the hierarchy right and that's one prefix call:
+_and_ the affected budget's progress. Get the hierarchy right and that's one prefix call:
 
 ```
 ['tx']                                → everything transaction-derived
@@ -172,7 +172,7 @@ subset of what TanStack already gives you.
 - [ ] `useCategories()` → `Category[]`, ordered by `sortOrder`
 - [ ] `useTransactions(month | null, filters?)` → `Transaction[]`, **newest first**.
       `null` month means all history — that's how search works. Filters: `text` (matches
-      note *and* category name, case-insensitive), `categoryIds`, `minMinor`, `maxMinor`,
+      note _and_ category name, case-insensitive), `categoryIds`, `minMinor`, `maxMinor`,
       `from`, `to`.
 - [ ] `useMonthSummary(month)` → `{ totalMinor, byCategory }`, **`byCategory` sorted
       descending** — the Stats screen doesn't re-sort.
@@ -246,7 +246,7 @@ both the add and edit expense screens (the dashed **New** tile). All three go th
 ## Notes
 
 - **You are local-only by choice.** No sync, so no conflict resolution — but also no
-  backup. If you ever feel the pull toward a server, say so *before* you have months of
+  backup. If you ever feel the pull toward a server, say so _before_ you have months of
   real expenses, because retrofitting sync means migrating live data (client-generated
   UUIDs, `updated_at`, soft deletes).
 - Currency is **INR, single-currency**. A `currency` column added later needs a backfill.
