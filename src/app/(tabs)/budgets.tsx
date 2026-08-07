@@ -98,8 +98,10 @@ function BudgetRow({
   return (
     <View className={zebra ? "bg-row-alt" : ""}>
       <Rule />
-      <View className="px-4 pb-3 pt-3">
-        <View className="flex-row items-baseline justify-between pr-3">
+      {/* pr-7 on the container so the figure, the bar and the percentage all
+          stop 12px clear of the alignment rule. */}
+      <View className="pb-3 pl-4 pr-7 pt-3">
+        <View className="flex-row items-baseline justify-between">
           <Text className="font-sans-medium text-row text-ink">{name}</Text>
           <Amount amountMinor={budget.spentMinor} tone={over ? "alert" : "ink"} />
         </View>
@@ -108,7 +110,7 @@ function BudgetRow({
           <ProgressBar fraction={fraction} over={over} />
         </View>
 
-        <View className="flex-row items-center justify-between pr-3">
+        <View className="flex-row items-center justify-between">
           {editing ? (
             <TextInput
               autoFocus

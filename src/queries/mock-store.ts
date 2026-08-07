@@ -139,7 +139,9 @@ function seedBudgets(): Budget[] {
     { categoryId: "c-trvl", month, limitMinor: 400_000 },
     { categoryId: "c-home", month, limitMinor: 2_500_000 },
     { categoryId: "c-shop", month, limitMinor: 600_000 },
-    { categoryId: "c-entm", month, limitMinor: 200_000 },
+    // Deliberately too low, so the over-budget state (alert ink, >100% bar) is
+    // always visible in development rather than only appearing by luck.
+    { categoryId: "c-entm", month, limitMinor: 50_000 },
   ];
 }
 

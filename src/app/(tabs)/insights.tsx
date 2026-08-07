@@ -17,25 +17,15 @@ import { useCategories, useMonthSummary, useMonthTrend } from "@/queries";
 import type { ID } from "@/types/domain";
 
 /**
- * Rank-based ink density instead of a categorical colour palette.
+ * One ink weight for every bar; length alone carries the data.
  *
- * A per-category colour set was the obvious move and it's the wrong one here:
- * this design keeps its single accent reserved for overspending, and eight
- * arbitrary hues would have been the one element in the app not derived from the
- * content. Opacity of the same ink encodes what the chart is actually about —
- * relative weight — and it survives both themes for free.
+ * A per-category colour set was the obvious move and the wrong one — this design
+ * reserves its single accent for overspending. The first attempt instead ramped
+ * ink *opacity* by rank, which looked principled and failed in practice: the
+ * small categories were already short bars, and fading them too made everything
+ * below fourth place invisible. Double-encoding magnitude cost legibility and
+ * bought nothing, so the ramp is gone.
  */
-const DENSITY = [
-  "bg-ink/90",
-  "bg-ink/70",
-  "bg-ink/56",
-  "bg-ink/44",
-  "bg-ink/34",
-  "bg-ink/26",
-  "bg-ink/20",
-  "bg-ink/16",
-];
-
 const TREND_MONTHS = 6;
 
 export default function InsightsScreen() {
@@ -68,11 +58,13 @@ export default function InsightsScreen() {
           <ScrollView contentContainerStyle={{ paddingBottom: 12 }}>
             <SectionLabel>Where it went</SectionLabel>
 
-            {byCategory.map((entry, index) => (
+            {byCategory.map((entry) => (
               <View key={entry.categoryId}>
                 <Rule />
-                <View className="px-4 pb-3 pt-3">
-                  <View className="flex-row items-baseline justify-between pr-3">
+                {/* pr-7 on the container, not pr-3 on each child: every
+                    right-hand element then stops 12px clear of the rule. */}
+                <View className="pb-3 pl-4 pr-7 pt-3">
+                  <View className="flex-row items-baseline justify-between">
                     <Text className="font-sans-medium text-row text-ink">
                       {nameOf(entry.categoryId)}
                     </Text>
@@ -81,7 +73,7 @@ export default function InsightsScreen() {
                   <View className="flex-row items-center gap-3 pt-2">
                     <View className="h-[3px] flex-1 bg-rule/40">
                       <View
-                        className={`h-full ${DENSITY[Math.min(index, DENSITY.length - 1)]}`}
+                        className="h-full bg-ink"
                         style={{
                           width: `${largest > 0 ? (entry.totalMinor / largest) * 100 : 0}%`,
                         }}
@@ -137,7 +129,7 @@ function TrendChart({
   const HEIGHT = 96;
 
   return (
-    <View className="px-4 pt-4">
+    <View className="pl-4 pr-7 pt-4">
       <View className="flex-row items-end justify-between" style={{ height: HEIGHT }}>
         {points.map((point) => {
           const active = point.month === activeMonth;
@@ -151,7 +143,7 @@ function TrendChart({
                 {point.totalMinor > 0 ? formatCompact(point.totalMinor).replace("₹", "") : ""}
               </Text>
               <View
-                className={`w-full ${active ? "bg-ink" : "bg-ink/25"}`}
+                className={`w-full ${active ? "bg-ink" : "bg-ink/45"}`}
                 style={{
                   height: Math.max(
                     point.totalMinor > 0 ? 2 : 0,

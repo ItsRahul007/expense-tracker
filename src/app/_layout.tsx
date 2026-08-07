@@ -15,6 +15,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { colorScheme as nativewindColorScheme, useColorScheme } from "nativewind";
 import { useEffect } from "react";
+import { useColorScheme as useSystemColorScheme } from "react-native";
 
 import { PALETTE } from "@/constants/palette";
 import { AppDataProviders } from "@/providers/app-data-providers";
@@ -37,13 +38,32 @@ export default function RootLayout() {
   });
 
   const { data: themePreference, isPending: themePending } = useSetting("theme");
+  const systemScheme = useSystemColorScheme();
 
-  // The stored preference drives NativeWind rather than the OS directly, which
-  // is why tailwind.config.js uses darkMode: "class" — it lets the in-app
-  // setting override the system appearance.
+  /**
+   * "system" is resolved here rather than handed to NativeWind.
+   *
+   * With darkMode: "class", NativeWind only applies the `dark` class for an
+   * explicit "light"/"dark" — passing "system" through leaves the class off and
+   * the app silently stays light even on a dark device. So the OS scheme is read
+   * from React Native's Appearance and collapsed into a concrete value, which is
+   * also what makes the in-app override possible at all.
+   */
+  const preference = themePreference ?? "system";
+  // React Native's useColorScheme can return null *or* "unspecified"; both mean
+  // "no stated preference", which resolves to light.
+  const resolvedScheme: "light" | "dark" =
+    preference === "system"
+      ? systemScheme === "dark"
+        ? "dark"
+        : "light"
+      : preference;
+
+  // Declared before the splash-hide effect below so the class is applied in the
+  // same commit, before anything becomes visible.
   useEffect(() => {
-    nativewindColorScheme.set(themePreference ?? "system");
-  }, [themePreference]);
+    nativewindColorScheme.set(resolvedScheme);
+  }, [resolvedScheme]);
 
   /**
    * Three gates before first paint: fonts, the theme preference, and (once the
