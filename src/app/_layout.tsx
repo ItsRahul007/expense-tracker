@@ -29,6 +29,14 @@ import "@/global.css";
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  return (
+    <AppDataProviders>
+      <AppGates />
+    </AppDataProviders>
+  );
+}
+
+function AppGates() {
   // Each weight is registered under its own family name because React Native
   // does not synthesise weights — see the fontFamily block in tailwind.config.js.
   const [fontsLoaded, fontError] = useFonts({
@@ -84,11 +92,7 @@ export default function RootLayout() {
 
   if (!ready) return null;
 
-  return (
-    <AppDataProviders>
-      <RootNavigator />
-    </AppDataProviders>
-  );
+  return <RootNavigator />;
 }
 
 function RootNavigator() {

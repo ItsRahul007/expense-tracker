@@ -88,7 +88,7 @@ the file:
 
 - [x] Generate the initial migration with `drizzle-kit`.
 - [x] Run migrations on boot (`onInit` or the Drizzle hook — your call).
-- [ ] Seed the eight default categories. The UI expects `icon` to be a valid **Ionicons**
+- [x] Seed the eight default categories. The UI expects `icon` to be a valid **Ionicons**
       name and `color` to be a hex string; `src/queries/mock-store.ts` has the exact eight
       I used, and `src/constants/category-options.ts` has the curated icon/colour sets the
       custom-category editor offers.
