@@ -35,8 +35,7 @@ export function ScreenHeader({
             accessibilityRole="button"
             accessibilityLabel="Go back"
             hitSlop={12}
-            className="-ml-1 h-9 w-9 items-center justify-center rounded-full"
-            style={({ pressed }) => (pressed ? { opacity: 0.5 } : undefined)}
+            className="-ml-1 h-9 w-9 items-center justify-center rounded-full active:opacity-50"
           >
             <Ionicons name="chevron-back" size={24} color={palette.fg} />
           </Pressable>
@@ -56,8 +55,7 @@ export function ScreenHeader({
             accessibilityRole="button"
             accessibilityLabel={action.label}
             hitSlop={10}
-            className="h-9 w-9 items-center justify-center rounded-full bg-card border border-border"
-            style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+            className="h-9 w-9 items-center justify-center rounded-full bg-card border border-border active:opacity-60"
           >
             <Ionicons name={action.icon as never} size={18} color={palette.fg} />
           </Pressable>

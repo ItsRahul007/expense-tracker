@@ -1,8 +1,10 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, ScrollView, Text, TextInput, View } from "react-native";
 
-import { Button, Card, Chip, IconBadge, ScreenHeader } from "@/components/ui";
+import { CategoryEditor } from "@/components/category-editor";
+import { CategoryPicker } from "@/components/category-picker";
+import { Button, Card, Chip, ScreenHeader } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import {
   digitsToMinor,
@@ -40,6 +42,7 @@ export default function TransactionScreen() {
   const [categoryId, setCategoryId] = useState<ID | null>(null);
   const [occurredAt, setOccurredAt] = useState<number | null>(null);
   const [note, setNote] = useState("");
+  const [creatingCategory, setCreatingCategory] = useState(false);
 
   // Seed the editable copy once the record arrives, then leave it alone so a
   // refetch can't overwrite what's being typed.
@@ -142,34 +145,23 @@ export default function TransactionScreen() {
         <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
           Category
         </Text>
-        <View className="flex-row flex-wrap gap-2">
-          {(categories ?? []).map((option) => {
-            const selected = option.id === categoryId;
-            return (
-              <Pressable
-                key={option.id}
-                onPress={() => setCategoryId(option.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={option.name}
-                className={`w-[31%] items-center gap-1.5 rounded-2xl border py-3 ${
-                  selected ? "border-accent bg-accent/10" : "border-border bg-card"
-                }`}
-                style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-              >
-                <IconBadge icon={option.icon} color={option.color} size="sm" />
-                <Text
-                  numberOfLines={1}
-                  className={`font-sans-medium px-1 text-caption ${
-                    selected ? "text-accent" : "text-muted"
-                  }`}
-                >
-                  {option.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {creatingCategory ? (
+          <CategoryEditor
+            autoFocus
+            onCancel={() => setCreatingCategory(false)}
+            onCreated={(newId) => {
+              setCategoryId(newId);
+              setCreatingCategory(false);
+            }}
+          />
+        ) : (
+          <CategoryPicker
+            categories={categories ?? []}
+            selectedId={categoryId}
+            onSelect={setCategoryId}
+            onAddNew={() => setCreatingCategory(true)}
+          />
+        )}
 
         <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
           Date

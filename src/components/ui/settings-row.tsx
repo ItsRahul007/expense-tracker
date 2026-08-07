@@ -28,7 +28,7 @@ export function SettingsRow({
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={value ? `${label}: ${value}` : label}
-      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+      className="active:opacity-60"
     >
       <View className="min-h-[52px] flex-row items-center gap-3 px-4 py-3">
         <Ionicons name={icon as never} size={20} color={palette.muted} />

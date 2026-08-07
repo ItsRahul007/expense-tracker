@@ -35,7 +35,7 @@ export function TransactionRow({
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={`${title}, ${subtitle}, ${formatAmountLabel(amountMinor)}`}
-      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+      className="active:opacity-60"
     >
       <View className="flex-row items-center gap-3 px-4 py-3">
         <IconBadge icon={icon} color={color} />

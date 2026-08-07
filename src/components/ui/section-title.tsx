@@ -16,7 +16,7 @@ export function SectionTitle({
           onPress={action.onPress}
           accessibilityRole="button"
           hitSlop={8}
-          style={({ pressed }) => (pressed ? { opacity: 0.5 } : undefined)}
+          className="active:opacity-50"
         >
           <Text className="font-sans-semibold text-label text-accent">
             {action.label}

@@ -65,8 +65,11 @@ function Arrow({
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
       hitSlop={8}
-      className="h-8 w-8 items-center justify-center rounded-full"
-      style={({ pressed }) => ({ opacity: disabled ? 0.25 : pressed ? 0.5 : 1 })}
+      // Both states in className — as a function-form `style` the disabled
+      // dimming never applied, so a dead arrow looked identical to a live one.
+      className={`h-8 w-8 items-center justify-center rounded-full ${
+        disabled ? "opacity-25" : "active:opacity-50"
+      }`}
     >
       <Ionicons name={icon as never} size={18} color={color} />
     </Pressable>

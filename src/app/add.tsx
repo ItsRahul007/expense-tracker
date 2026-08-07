@@ -3,7 +3,9 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { Button, Card, Chip, IconBadge } from "@/components/ui";
+import { CategoryEditor } from "@/components/category-editor";
+import { CategoryPicker } from "@/components/category-picker";
+import { Button, Card, Chip } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import {
   digitsToMinor,
@@ -37,6 +39,7 @@ export default function AddScreen() {
   const [chosenCategory, setChosenCategory] = useState<ID | null>(null);
   const [dayOffset, setDayOffset] = useState(0);
   const [note, setNote] = useState("");
+  const [creatingCategory, setCreatingCategory] = useState(false);
 
   /** Defaults to the last category used, which is right far more often than
    *  alphabetical order — it makes the common case a two-field form. */
@@ -67,8 +70,7 @@ export default function AddScreen() {
           accessibilityRole="button"
           accessibilityLabel="Close"
           hitSlop={10}
-          className="h-9 w-9 items-center justify-center rounded-full border border-border bg-card"
-          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+          className="h-9 w-9 items-center justify-center rounded-full border border-border bg-card active:opacity-60"
         >
           <Ionicons name="close" size={18} color={palette.fg} />
         </Pressable>
@@ -112,34 +114,26 @@ export default function AddScreen() {
         <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
           Category
         </Text>
-        <View className="flex-row flex-wrap gap-2">
-          {(categories ?? []).map((category) => {
-            const selected = category.id === categoryId;
-            return (
-              <Pressable
-                key={category.id}
-                onPress={() => setChosenCategory(category.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={category.name}
-                className={`w-[31%] items-center gap-1.5 rounded-2xl border py-3 ${
-                  selected ? "border-accent bg-accent/10" : "border-border bg-card"
-                }`}
-                style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-              >
-                <IconBadge icon={category.icon} color={category.color} size="sm" />
-                <Text
-                  numberOfLines={1}
-                  className={`font-sans-medium px-1 text-caption ${
-                    selected ? "text-accent" : "text-muted"
-                  }`}
-                >
-                  {category.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+
+        {creatingCategory ? (
+          <CategoryEditor
+            autoFocus
+            onCancel={() => setCreatingCategory(false)}
+            onCreated={(id) => {
+              // Select it straight away — the whole reason for creating one here
+              // is to keep going with this expense.
+              setChosenCategory(id);
+              setCreatingCategory(false);
+            }}
+          />
+        ) : (
+          <CategoryPicker
+            categories={categories ?? []}
+            selectedId={categoryId}
+            onSelect={setChosenCategory}
+            onAddNew={() => setCreatingCategory(true)}
+          />
+        )}
 
         <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
           Date

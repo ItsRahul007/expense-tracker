@@ -42,8 +42,12 @@ export function Button({
       disabled={inactive}
       accessibilityRole="button"
       accessibilityState={{ disabled: inactive, busy: loading }}
-      className={`h-13 min-h-[52px] w-full flex-row items-center justify-center gap-2 rounded-2xl ${surface}`}
-      style={({ pressed }) => ({ opacity: inactive ? 0.45 : pressed ? 0.85 : 1 })}
+      // Disabled dimming and press feedback both live in className: a
+      // function-form `style` is dropped when className is present, so the
+      // disabled state was rendering at full strength.
+      className={`min-h-[52px] w-full flex-row items-center justify-center gap-2 rounded-2xl ${surface} ${
+        inactive ? "opacity-45" : "active:opacity-80"
+      }`}
     >
       {loading ? (
         <ActivityIndicator

@@ -52,8 +52,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           });
           if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
         }}
-        className="flex-1 items-center justify-center gap-1 pt-1"
-        style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+        className="flex-1 items-center justify-center gap-1 pt-1 active:opacity-60"
       >
         <Ionicons
           name={(focused ? glyphs.active : glyphs.inactive) as never}
@@ -83,16 +82,17 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             onPress={() => router.push("/add")}
             accessibilityRole="button"
             accessibilityLabel="Add expense"
-            className="-mt-6 h-14 w-14 items-center justify-center rounded-full bg-brand"
-            style={({ pressed }) => ({
-              opacity: pressed ? 0.85 : 1,
-              transform: [{ scale: pressed ? 0.94 : 1 }],
+            className="-mt-6 h-14 w-14 items-center justify-center rounded-full bg-brand active:opacity-80"
+            // Object style: the shadow was previously inside a function-form
+            // `style`, which NativeWind drops when className is present — so the
+            // button's lift never rendered at all.
+            style={{
               shadowColor: palette.brand,
               shadowOpacity: 0.35,
               shadowRadius: 10,
               shadowOffset: { width: 0, height: 4 },
               elevation: 6,
-            })}
+            }}
           >
             <Ionicons name="add" size={30} color="#FFFFFF" />
           </Pressable>
