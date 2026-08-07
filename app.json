@@ -21,6 +21,9 @@
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.INTERNET"
       ],
       "package": "com.rahulghosh.expensetracker"
@@ -52,7 +55,19 @@
           "enableFileSharing": true
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "buildArchs": [
+              "arm64-v8a"
+            ],
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -64,6 +79,12 @@
         "projectId": "208a812b-34c9-40eb-a56e-cfca7da41cb1"
       }
     },
-    "owner": "rahulghosh"
+    "owner": "rahulghosh",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/208a812b-34c9-40eb-a56e-cfca7da41cb1"
+    }
   }
 }
