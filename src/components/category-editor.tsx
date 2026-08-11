@@ -28,12 +28,18 @@ export function CategoryEditor({
   onCreated,
   onSaved,
   onCancel,
+  onDelete,
+  deleteBlockedReason,
   autoFocus = false,
 }: {
   category?: Category;
   onCreated?: (id: ID) => void;
   onSaved?: () => void;
   onCancel?: () => void;
+  /** Edit mode only. Omit to leave the delete action off entirely. */
+  onDelete?: () => void;
+  /** When set, delete is disabled and this is shown as the reason. */
+  deleteBlockedReason?: string | null;
   autoFocus?: boolean;
 }) {
   const palette = usePalette();
@@ -178,6 +184,26 @@ export function CategoryEditor({
           <Button label="Cancel" variant="secondary" onPress={onCancel} />
         ) : null}
       </View>
+
+      {/* Below a rule and after Cancel: destructive actions shouldn't sit in the
+          same visual group as the one you're meant to tap. */}
+      {editing && onDelete ? (
+        <View className="mt-6 border-t border-border pt-5">
+          <Button
+            label="Delete category"
+            variant="danger"
+            onPress={onDelete}
+            disabled={Boolean(deleteBlockedReason)}
+          />
+          {deleteBlockedReason ? (
+            // Why it's disabled, not just that it is — a greyed-out button with
+            // no explanation reads as a broken app.
+            <Text className="font-sans mt-2.5 text-center text-label text-muted">
+              {deleteBlockedReason}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
     </Card>
   );
 }

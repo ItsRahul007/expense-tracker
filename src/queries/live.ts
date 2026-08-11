@@ -484,6 +484,44 @@ export function useUpsertCategory(): MutationResult<Category> {
   return toMutationResult(mutation);
 }
 
+/**
+ * Deletes a category and the budgets attached to it.
+ *
+ * Two referencing tables, two deliberately different answers. A budget is a
+ * monthly limit *on* a category and means nothing without one, so it goes where
+ * the category goes — and for every month, not just the one the Categories
+ * screen happens to be able to see. A transaction is a record of money that was
+ * actually spent, so it is left alone and the "no action" foreign key aborts the
+ * whole delete instead, which is exactly the loud failure the schema comment
+ * asks for.
+ *
+ * Both deletes share one transaction, so an abort — the FK above, or the
+ * `categories_protect_default_delete` trigger on a seeded category — takes the
+ * budget rows back with it rather than stripping a surviving category's limits.
+ */
+export function useDeleteCategory(): MutationResult<ID> {
+  const db = useDrizzle();
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (id: ID) =>
+      db.transaction((tx) => {
+        tx.delete(budget).where(eq(budget.categoryId, id)).run();
+        return tx.delete(category).where(eq(category.id, id)).run();
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["category"] });
+      // ['budget'] because rows were actually removed here, not just for the
+      // sortOrder reason useUpsertCategory invalidates it for. Transaction keys
+      // are untouched on purpose: a category with transactions can't reach this
+      // point at all, so nothing under them can have changed.
+      queryClient.invalidateQueries({ queryKey: ["budget"] });
+    },
+  });
+
+  return toMutationResult(mutation);
+}
+
 export function useSetSetting(): MutationResult<{
   key: keyof Settings;
   value: Settings[keyof Settings];

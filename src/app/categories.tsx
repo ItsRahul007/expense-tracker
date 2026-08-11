@@ -6,8 +6,9 @@ import { BackHandler, Pressable, ScrollView, Text, View } from "react-native";
 import { CategoryEditor } from "@/components/category-editor";
 import { Card, IconBadge, ScreenHeader, SectionTitle } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
+import { useCategoryUsage } from "@/hooks/use-category-usage";
 import { useCategories } from "@/queries";
-import type { ID } from "@/types/domain";
+import type { Category, ID } from "@/types/domain";
 
 export default function CategoriesScreen() {
   const palette = usePalette();
@@ -63,22 +64,13 @@ export default function CategoriesScreen() {
             the rest of the list off-screen anyway, and two open forms make it
             ambiguous which one the keyboard belongs to. */}
         {editing ? (
-          <View>
-            {/* The name is already in the header subtitle — repeating it here
-                just crowds the form. */}
-            <SectionTitle title="Edit category" />
-            <CategoryEditor
-              // Remount per category so the form re-seeds from the row tapped.
-              key={editing.id}
-              category={editing}
-              onSaved={() => setEditingId(null)}
-              onCancel={() => setEditingId(null)}
-            />
-            <Text className="font-sans mt-5 px-1 text-label text-muted">
-              Renaming or recolouring keeps every expense already filed here —
-              they point at the category, not at its name.
-            </Text>
-          </View>
+          // Remount per category so the form re-seeds from the row tapped — and
+          // so the usage query inside is only ever live for the open editor.
+          <EditPanel
+            key={editing.id}
+            category={editing}
+            onDone={() => setEditingId(null)}
+          />
         ) : (
           <>
             <Card padded={false} className="overflow-hidden">
@@ -113,14 +105,62 @@ export default function CategoriesScreen() {
             </View>
 
             <Text className="font-sans mt-5 px-1 text-label text-muted">
-              Tap a category to rename it or change its icon and colour.
-              Categories can not be deleted yet — removing one that already has
-              expenses attached needs a rule for where those expenses go, which
-              belongs in the data layer.
+              Tap a category to rename it, change its icon and colour, or delete
+              it. A category can only be deleted once nothing points at it.
             </Text>
           </>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * The open editor, plus the delete action and the reason it's unavailable.
+ *
+ * Its own component so the usage query only runs while a category is actually
+ * being edited — hoisting it into the screen would have it counting rows for
+ * every row in the list, on a screen that mostly just shows a list.
+ */
+function EditPanel({
+  category,
+  onDone,
+}: {
+  category: Category;
+  onDone: () => void;
+}) {
+  const usage = useCategoryUsage(category.id);
+
+  /** Null means deletable. Anything else is shown under the button. */
+  const blockedReason = usage.isPending
+    ? "Checking where this category is used…"
+    : usage.transactionCount > 0
+      ? `${usage.transactionCount} ${usage.transactionCount === 1 ? "expense is" : "expenses are"} filed here — move or delete them first.`
+      : usage.hasBudget
+        ? "This category has a budget this month — remove the budget first."
+        : null;
+
+  return (
+    <View>
+      {/* The name is already in the header subtitle — repeating it here just
+          crowds the form. */}
+      <SectionTitle title="Edit category" />
+      <CategoryEditor
+        category={category}
+        onSaved={onDone}
+        onCancel={onDone}
+        onDelete={() =>
+          router.push({
+            pathname: "/delete-category",
+            params: { id: category.id },
+          })
+        }
+        deleteBlockedReason={blockedReason}
+      />
+      <Text className="font-sans mt-5 px-1 text-label text-muted">
+        Renaming or recolouring keeps every expense already filed here — they
+        point at the category, not at its name.
+      </Text>
     </View>
   );
 }
