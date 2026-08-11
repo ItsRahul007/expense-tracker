@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Text, TextInput, View } from "react-native";
 
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
@@ -16,7 +16,6 @@ import {
 } from "@/lib/format";
 import {
   useCategories,
-  useDeleteTransaction,
   useTransaction,
   useUpdateTransaction,
 } from "@/queries";
@@ -38,7 +37,6 @@ export default function TransactionScreen() {
   const { data: transaction, isPending } = useTransaction(id);
   const { data: categories } = useCategories();
   const updateTransaction = useUpdateTransaction();
-  const deleteTransaction = useDeleteTransaction();
 
   const [amountText, setAmountText] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<ID | null>(null);
@@ -90,19 +88,14 @@ export default function TransactionScreen() {
     router.back();
   };
 
+  /** Confirmation lives in its own formSheet route so it matches the
+   *  delete-budget flow instead of dropping a system alert on the user. */
   const confirmDelete = () => {
     if (!transaction) return;
-    Alert.alert("Delete this expense?", "This cannot be undone.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await deleteTransaction.mutateAsync(transaction.id);
-          router.back();
-        },
-      },
-    ]);
+    router.push({
+      pathname: "/delete-transaction",
+      params: { id: transaction.id },
+    });
   };
 
   if (isPending || !transaction || amountText === null) {
@@ -204,7 +197,6 @@ export default function TransactionScreen() {
             label="Delete expense"
             variant="danger"
             onPress={confirmDelete}
-            loading={deleteTransaction.isPending}
           />
         </View>
 

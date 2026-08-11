@@ -78,6 +78,10 @@ export default function SearchScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingBottom: 12 }}
+        // A ScrollView ships with flexGrow: 1, so this row of chips was claiming
+        // an equal share of the column's height and pushing the results down to
+        // the middle of the screen. It should only be as tall as one chip.
+        style={{ flexGrow: 0 }}
       >
         {(categories ?? []).map((category) => (
           <Chip
@@ -96,7 +100,13 @@ export default function SearchScreen() {
       </ScrollView>
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingBottom: 32,
+          // Results read top-down from under the filters; the empty state is the
+          // one thing that should sit centred in the space that's left.
+          flexGrow: rows.length === 0 ? 1 : undefined,
+        }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

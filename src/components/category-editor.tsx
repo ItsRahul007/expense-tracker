@@ -6,25 +6,33 @@ import { Button, Card, IconBadge } from "@/components/ui";
 import { CATEGORY_COLORS, CATEGORY_ICONS } from "@/constants/category-options";
 import { usePalette } from "@/constants/palette";
 import { useCategories, useUpsertCategory } from "@/queries";
-import type { ID } from "@/types/domain";
+import type { Category, ID } from "@/types/domain";
 
 /**
- * Create a custom category: name, icon, colour.
+ * Create or edit a custom category: name, icon, colour.
  *
  * Shared between the Categories screen and the inline "New category" step in the
- * add-expense sheet, so both offer exactly the same options and generate ids the
- * same way.
+ * add-expense and add-budget sheets, so every entry point offers exactly the same
+ * options and generates ids the same way.
  *
- * `onCreated` receives the new id so the add-expense flow can select the category
+ * Pass `category` to edit an existing one instead of creating. Edit mode reuses
+ * the same form deliberately — a separate one would drift, and `useUpsertCategory`
+ * already treats a known id as an update.
+ *
+ * `onCreated` receives the new id so the add flows can select the category
  * immediately — creating one and then having to hunt for it in the grid would
  * make the shortcut pointless.
  */
 export function CategoryEditor({
+  category,
   onCreated,
+  onSaved,
   onCancel,
   autoFocus = false,
 }: {
+  category?: Category;
   onCreated?: (id: ID) => void;
+  onSaved?: () => void;
   onCancel?: () => void;
   autoFocus?: boolean;
 }) {
@@ -32,16 +40,27 @@ export function CategoryEditor({
   const { data: categories } = useCategories();
   const upsertCategory = useUpsertCategory();
 
-  const [name, setName] = useState("");
-  const [icon, setIcon] = useState(CATEGORY_ICONS[0]);
-  const [color, setColor] = useState(CATEGORY_COLORS[0]);
+  const editing = category !== undefined;
+
+  // Seeded from props on mount only. Callers editing a different category are
+  // expected to remount (see the `key` on the Categories screen), which is what
+  // keeps a refetch from overwriting a half-typed name.
+  const [name, setName] = useState(category?.name ?? "");
+  const [icon, setIcon] = useState(category?.icon ?? CATEGORY_ICONS[0]);
+  const [color, setColor] = useState(category?.color ?? CATEGORY_COLORS[0]);
 
   const trimmed = name.trim();
   const existing = categories ?? [];
   const duplicate = existing.some(
-    (c) => c.name.toLowerCase() === trimmed.toLowerCase(),
+    (c) =>
+      c.name.toLowerCase() === trimmed.toLowerCase() && c.id !== category?.id,
   );
-  const canCreate = trimmed.length > 0 && !duplicate;
+  const changed =
+    category === undefined ||
+    trimmed !== category.name ||
+    icon !== category.icon ||
+    color !== category.color;
+  const canSubmit = trimmed.length > 0 && !duplicate && changed;
 
   /** Slug from the name, with a numeric suffix if that slug is taken — two
    *  categories can share a slug even when the names differ ("Pet care" vs
@@ -54,8 +73,17 @@ export function CategoryEditor({
     return `${base}-${suffix}`;
   };
 
-  const create = () => {
-    if (!canCreate) return;
+  const submit = () => {
+    if (!canSubmit) return;
+
+    // The id and sortOrder are kept: renaming "Food" to "Groceries" is the same
+    // category, and re-slugging it would orphan every expense pointing at it.
+    if (category) {
+      upsertCategory.mutate({ ...category, name: trimmed, icon, color });
+      onSaved?.();
+      return;
+    }
+
     const id = makeId();
     upsertCategory.mutate({
       id,
@@ -83,7 +111,7 @@ export function CategoryEditor({
           placeholder="Category name"
           placeholderTextColor={palette.muted}
           returnKeyType="done"
-          onSubmitEditing={create}
+          onSubmitEditing={submit}
           className="font-sans-medium h-12 flex-1 rounded-xl border border-border bg-bg px-3 text-body text-fg"
           style={{ minWidth: 0 }}
           accessibilityLabel="Category name"
@@ -141,7 +169,11 @@ export function CategoryEditor({
       </View>
 
       <View className="mt-6 gap-3">
-        <Button label="Create category" onPress={create} disabled={!canCreate} />
+        <Button
+          label={editing ? "Save changes" : "Create category"}
+          onPress={submit}
+          disabled={!canSubmit}
+        />
         {onCancel ? (
           <Button label="Cancel" variant="secondary" onPress={onCancel} />
         ) : null}

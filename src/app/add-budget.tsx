@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { router, useNavigation } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
+import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
 import { Button, Card } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
@@ -13,6 +14,7 @@ import type { ID } from "@/types/domain";
 
 export default function AddBudgetScreen() {
   const palette = usePalette();
+  const navigation = useNavigation();
   const month = currentMonth();
 
   const { data: categories } = useCategories();
@@ -29,6 +31,19 @@ export default function AddBudgetScreen() {
 
   const [chosenCategory, setChosenCategory] = useState<ID | null>(null);
   const [draft, setDraft] = useState("");
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  /**
+   * The icon and colour grids need roughly a full screen, and the sheet's normal
+   * 0.6 detent leaves them behind the keyboard. Detents are a navigation option,
+   * so the sheet is grown for the duration of the editor and shrunk back after —
+   * the alternative is making the user drag the sheet up mid-form.
+   */
+  useEffect(() => {
+    navigation.setOptions({
+      sheetAllowedDetents: creatingCategory ? [0.95] : [0.6],
+    } as never);
+  }, [navigation, creatingCategory]);
 
   const categoryId = chosenCategory ?? available[0]?.id ?? null;
   const limitMinor = Number(draft.replace(/\D/g, "")) * 100;
@@ -85,18 +100,36 @@ export default function AddBudgetScreen() {
           Category
         </Text>
 
-        {available.length === 0 ? (
-          <Card>
-            <Text className="font-sans text-body text-muted">
-              Every category already has a budget this month.
-            </Text>
-          </Card>
-        ) : (
-          <CategoryPicker
-            categories={available}
-            selectedId={categoryId}
-            onSelect={setChosenCategory}
+        {creatingCategory ? (
+          <CategoryEditor
+            autoFocus
+            onCancel={() => setCreatingCategory(false)}
+            onCreated={(newId) => {
+              // A brand-new category can't already have a budget, so it lands in
+              // `available` and can be selected straight away.
+              setChosenCategory(newId);
+              setCreatingCategory(false);
+            }}
           />
+        ) : (
+          <>
+            {available.length === 0 ? (
+              <Card className="mb-2">
+                <Text className="font-sans text-body text-muted">
+                  Every category already has a budget this month. Add a new one
+                  to budget for it.
+                </Text>
+              </Card>
+            ) : null}
+            {/* Same dashed "New" tile as the add-expense sheet: realising a
+                category is missing shouldn't mean abandoning this form. */}
+            <CategoryPicker
+              categories={available}
+              selectedId={categoryId}
+              onSelect={setChosenCategory}
+              onAddNew={() => setCreatingCategory(true)}
+            />
+          </>
         )}
 
         <View className="mt-8">
