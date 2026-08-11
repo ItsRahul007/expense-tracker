@@ -22,7 +22,13 @@ export type ID = string;
 export type Category = {
   id: ID;
   name: string;
-  /** Ionicons glyph name, e.g. "restaurant" — see @expo/vector-icons. */
+  /**
+   * Either an Ionicons glyph name ("restaurant" — see @expo/vector-icons) or a
+   * single emoji ("🍔"). Which one isn't recorded separately and doesn't need to
+   * be: Ionicons names are ASCII, emoji aren't, so `isEmojiIcon` in
+   * `src/lib/emoji.ts` tells them apart. The seeded default categories use names;
+   * anything the user creates can be either.
+   */
   icon: string;
   /** Hex colour for the icon. The UI renders its badge as this at low opacity. */
   color: string;
