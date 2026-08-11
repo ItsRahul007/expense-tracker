@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { BackHandler, Pressable, ScrollView, Text, View } from "react-native";
 
 import { CategoryEditor } from "@/components/category-editor";
 import { Card, IconBadge, ScreenHeader, SectionTitle } from "@/components/ui";
@@ -17,16 +17,41 @@ export default function CategoriesScreen() {
   const count = categories?.length ?? 0;
   const editing = categories?.find((c) => c.id === editingId) ?? null;
 
+  /**
+   * Editing is screen state, not a route, so "back" has two meanings here and the
+   * shallower one has to win: close the editor, and only leave the screen once
+   * the list is what's showing. Otherwise one tap skips the list entirely and
+   * lands on Settings, silently dropping whatever was being edited.
+   */
+  const goBack = () => {
+    if (editing) {
+      setEditingId(null);
+      return;
+    }
+    router.back();
+  };
+
+  // The header chevron is only one of the ways back. Android's system gesture
+  // and hardware button bypass it completely, so they need the same rule.
+  useEffect(() => {
+    if (!editing) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setEditingId(null);
+      return true; // handled — don't let the navigator pop the screen too
+    });
+    return () => subscription.remove();
+  }, [editing]);
+
   return (
     <View className="flex-1 bg-bg">
       <ScreenHeader
         title="Categories"
         subtitle={
           editing
-            ? "Editing"
+            ? `Editing ${editing.name}`
             : `${count} ${count === 1 ? "category" : "categories"}`
         }
-        onBack={() => router.back()}
+        onBack={goBack}
       />
 
       <ScrollView
@@ -39,7 +64,9 @@ export default function CategoriesScreen() {
             ambiguous which one the keyboard belongs to. */}
         {editing ? (
           <View>
-            <SectionTitle title={`Edit ${editing.name}`} />
+            {/* The name is already in the header subtitle — repeating it here
+                just crowds the form. */}
+            <SectionTitle title="Edit category" />
             <CategoryEditor
               // Remount per category so the form re-seeds from the row tapped.
               key={editing.id}
