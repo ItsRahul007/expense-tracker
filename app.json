@@ -4,16 +4,17 @@
     "slug": "expense-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/app-logo.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "expensetracker",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/app-logo.png"
+      "icon": "./assets/images/icon.png"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#F2F5F1",
-        "foregroundImage": "./assets/images/app-logo.png"
+        "foregroundImage": "./assets/images/adaptive-icon-foreground.png",
+        "monochromeImage": "./assets/images/adaptive-icon-monochrome.png"
       },
       "softwareKeyboardLayoutMode": "pan",
       "predictiveBackGestureEnabled": false,
@@ -29,7 +30,7 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/app-logo.png",
+      "favicon": "./assets/images/favicon.ico",
       "bundler": "metro"
     },
     "plugins": [
