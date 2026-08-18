@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useNavigation } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { CategoryEditor } from "@/components/category-editor";
@@ -9,7 +9,7 @@ import { Button, Card } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import { formatMoney } from "@/lib/format";
 import { currentMonth } from "@/lib/month";
-import { useBudgets, useCategories, useUpsertBudget } from "@/queries";
+import { useCategories, useUpsertBudget } from "@/queries";
 import type { ID } from "@/types/domain";
 
 export default function AddBudgetScreen() {
@@ -18,16 +18,7 @@ export default function AddBudgetScreen() {
   const month = currentMonth();
 
   const { data: categories } = useCategories();
-  const { data: budgets } = useBudgets(month);
   const upsertBudget = useUpsertBudget();
-
-  const budgetedIds = useMemo(
-    () => new Set((budgets ?? []).map((b) => b.categoryId)),
-    [budgets],
-  );
-  /** Only categories without a budget this month — one that already has one
-   *  is edited from the budgets list, not re-created here. */
-  const available = (categories ?? []).filter((c) => !budgetedIds.has(c.id));
 
   const [chosenCategory, setChosenCategory] = useState<ID | null>(null);
   const [draft, setDraft] = useState("");
@@ -45,7 +36,7 @@ export default function AddBudgetScreen() {
     } as never);
   }, [navigation, creatingCategory]);
 
-  const categoryId = chosenCategory ?? available[0]?.id ?? null;
+  const categoryId = chosenCategory ?? categories?.[0]?.id ?? null;
   const limitMinor = Number(draft.replace(/\D/g, "")) * 100;
   const canSave = categoryId !== null && limitMinor > 0;
 
@@ -105,31 +96,20 @@ export default function AddBudgetScreen() {
             autoFocus
             onCancel={() => setCreatingCategory(false)}
             onCreated={(newId) => {
-              // A brand-new category can't already have a budget, so it lands in
-              // `available` and can be selected straight away.
               setChosenCategory(newId);
               setCreatingCategory(false);
             }}
           />
         ) : (
-          <>
-            {available.length === 0 ? (
-              <Card className="mb-2">
-                <Text className="font-sans text-body text-muted">
-                  Every category already has a budget this month. Add a new one
-                  to budget for it.
-                </Text>
-              </Card>
-            ) : null}
-            {/* Same dashed "New" tile as the add-expense sheet: realising a
-                category is missing shouldn't mean abandoning this form. */}
-            <CategoryPicker
-              categories={available}
-              selectedId={categoryId}
-              onSelect={setChosenCategory}
-              onAddNew={() => setCreatingCategory(true)}
-            />
-          </>
+          // Same dashed "New" tile as the add-expense sheet: realising a
+          // category is missing shouldn't mean abandoning this form. Picking a
+          // category that already has a budget this month just updates it.
+          <CategoryPicker
+            categories={categories ?? []}
+            selectedId={categoryId}
+            onSelect={setChosenCategory}
+            onAddNew={() => setCreatingCategory(true)}
+          />
         )}
 
         <View className="mt-8">
