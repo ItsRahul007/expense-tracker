@@ -51,6 +51,23 @@ export type NewTransaction = Omit<Transaction, "id">;
 /** What the edit form submits. Absent keys are left unchanged. */
 export type TransactionPatch = Partial<Omit<Transaction, "id">> & { id: ID };
 
+/**
+ * A whole CSV import, fully resolved and ready to write.
+ *
+ * Deliberately dumb: every category name has already become an id and every
+ * decision — which rows to skip, which categories to create — was made in
+ * `src/lib/csv-import.ts` and shown to the user before they confirmed. The data
+ * layer's only job is to insert all of it or none of it, so nothing here needs
+ * interpreting.
+ *
+ * `categories` comes first for a reason: the transactions reference them, and
+ * the foreign key would reject the batch the other way round.
+ */
+export type ImportRequest = {
+  categories: Category[];
+  transactions: NewTransaction[];
+};
+
 export type Budget = {
   categoryId: ID;
   month: Month;

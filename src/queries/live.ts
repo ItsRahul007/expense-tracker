@@ -5,6 +5,7 @@ import {
   BudgetStatus,
   Category,
   ID,
+  ImportRequest,
   MonthPoint,
   MonthSummary,
   MutationResult,
@@ -39,10 +40,19 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import { openDatabaseSync } from "expo-sqlite";
 
 import { DATABASE_NAME } from "@/constants/common";
+import { formatCsvRow } from "@/lib/csv";
 import { Month, monthRange } from "@/lib/month";
 import { useDrizzle } from "./helper";
 
 const DEFAULT_SETTINGS: Settings = { theme: "system" };
+
+/**
+ * Rows per `INSERT` when importing. Four columns each, so 200 rows is 800 bound
+ * parameters — comfortably inside SQLite's limit with room for it to be the
+ * lower, older one, while still turning a thousand-row file into five
+ * statements rather than a thousand.
+ */
+const IMPORT_CHUNK_ROWS = 200;
 
 function newTransactionId(): ID {
   return `t-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -522,6 +532,54 @@ export function useDeleteCategory(): MutationResult<ID> {
   return toMutationResult(mutation);
 }
 
+/**
+ * Writes a whole CSV import in one database transaction.
+ *
+ * All or nothing on purpose. A half-applied import is the worst possible
+ * outcome here: there's no undo in this app, and "some of my file is in there
+ * and I don't know which rows" is unrecoverable by hand. If the batch throws —
+ * a foreign key, a full disk — nothing is written and the import screen keeps
+ * the parsed file on screen to try again.
+ *
+ * Categories are inserted with `onConflictDoNothing` rather than an upsert:
+ * `planImport` only drafts categories whose names it couldn't find, so a
+ * conflict here means the id was taken by something it couldn't see, and
+ * overwriting that person's icon and colour choices is not this feature's
+ * business.
+ */
+export function useImportTransactions(): MutationResult<ImportRequest> {
+  const db = useDrizzle();
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async ({ categories, transactions }: ImportRequest) =>
+      db.transaction((tx) => {
+        for (const row of categories) {
+          tx.insert(category).values(row).onConflictDoNothing().run();
+        }
+
+        // Chunked because every row contributes four bound parameters and a
+        // multi-thousand-row file would otherwise blow SQLite's variable limit
+        // in a single statement.
+        for (let i = 0; i < transactions.length; i += IMPORT_CHUNK_ROWS) {
+          const chunk = transactions
+            .slice(i, i + IMPORT_CHUNK_ROWS)
+            .map((input) => ({ ...input, id: newTransactionId() }));
+          tx.insert(transaction).values(chunk).run();
+        }
+      }),
+    onSuccess: () => {
+      invalidateTransactions(queryClient);
+      // Unlike every other transaction write, an import can create categories
+      // too — without this the new ones render as "Uncategorised" until
+      // something else happens to refetch them.
+      queryClient.invalidateQueries({ queryKey: ["category"] });
+    },
+  });
+
+  return toMutationResult(mutation);
+}
+
 export function useSetSetting(): MutationResult<{
   key: keyof Settings;
   value: Settings[keyof Settings];
@@ -573,19 +631,18 @@ export async function exportAllData(): Promise<string> {
 
     const { formatAmountExact, formatISODate } = await import("@/lib/format");
 
-    const escape = (value: string) =>
-      /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-
     const rows = transactions.map((tx) =>
-      [
+      formatCsvRow([
         formatISODate(tx.occurredAt),
-        escape(nameOf(tx.categoryId)),
+        nameOf(tx.categoryId),
         formatAmountExact(tx.amountMinor),
-        escape(tx.note ?? ""),
-      ].join(","),
+        tx.note ?? "",
+      ]),
     );
 
-    return ["Date,Category,Amount,Note", ...rows].join("\n");
+    // These four column names, in this order, are what `parseLedgerCsv` reads
+    // back — see the header aliases there before renaming one.
+    return [formatCsvRow(["Date", "Category", "Amount", "Note"]), ...rows].join("\n");
   } finally {
     handle.closeSync();
   }

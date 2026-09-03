@@ -9,6 +9,7 @@ import {
   CATEGORY_ICONS,
 } from "@/constants/category-options";
 import { usePalette } from "@/constants/palette";
+import { makeCategoryId } from "@/lib/category-id";
 import { isEmojiIcon, isSingleEmoji } from "@/lib/emoji";
 import { useCategories, useUpsertCategory } from "@/queries";
 import type { Category, ID } from "@/types/domain";
@@ -106,17 +107,6 @@ export function CategoryEditor({
   const canSubmit =
     trimmed.length > 0 && !duplicate && changed && !typedIsInvalid;
 
-  /** Slug from the name, with a numeric suffix if that slug is taken — two
-   *  categories can share a slug even when the names differ ("Pet care" vs
-   *  "Pet-care"), and a colliding primary key would overwrite the first. */
-  const makeId = (): ID => {
-    const base = `c-${trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
-    if (!existing.some((c) => c.id === base)) return base;
-    let suffix = 2;
-    while (existing.some((c) => c.id === `${base}-${suffix}`)) suffix++;
-    return `${base}-${suffix}`;
-  };
-
   const submit = () => {
     if (!canSubmit) return;
 
@@ -128,7 +118,9 @@ export function CategoryEditor({
       return;
     }
 
-    const id = makeId();
+    // Shared with the CSV import, so a category created here and one created by
+    // a file get their ids by the same rule.
+    const id = makeCategoryId(trimmed, new Set(existing.map((c) => c.id)));
     upsertCategory.mutate({
       id,
       name: trimmed,

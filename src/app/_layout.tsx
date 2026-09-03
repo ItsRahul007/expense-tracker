@@ -177,6 +177,9 @@ function RootNavigator() {
         />
         <Stack.Screen name="search" options={{ presentation: "modal" }} />
         <Stack.Screen name="categories" options={{ presentation: "modal" }} />
+        {/* A modal rather than a sheet: the import preview can run to several
+            screens of new categories and skipped rows, and it needs the room. */}
+        <Stack.Screen name="import" options={{ presentation: "modal" }} />
         <Stack.Screen name="transaction/[id]" />
       </Stack>
     </ThemeProvider>

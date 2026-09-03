@@ -99,6 +99,11 @@ export default function SettingsScreen() {
               label="Export as CSV"
               value={exporting ? "Preparing…" : undefined}
               onPress={exporting ? undefined : exportLedger}
+            />
+            <SettingsRow
+              icon="cloud-upload-outline"
+              label="Import from CSV"
+              onPress={() => router.push("/import")}
               showSeparator={false}
             />
           </Card>
