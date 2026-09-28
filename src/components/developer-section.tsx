@@ -1,7 +1,7 @@
 import { Alert, View } from "react-native";
 
 import { Card, SectionTitle, SettingsRow } from "@/components/ui";
-import { generateSampleTransactions } from "@/lib/sample-data";
+import { SAMPLE_MONTHS, generateSampleTransactions } from "@/lib/sample-data";
 import { useImportTransactions } from "@/queries";
 
 /**
@@ -17,7 +17,7 @@ export function DeveloperSection() {
   const addSampleData = () => {
     const transactions = generateSampleTransactions();
     importTransactions.mutateAsync({ categories: [], transactions }).then(
-      () => Alert.alert("Sample data added", `${transactions.length} expenses across 6 months.`),
+      () => Alert.alert("Sample data added", `${transactions.length} expenses across ${SAMPLE_MONTHS} months.`),
       (error: unknown) =>
         Alert.alert(
           "Could not add sample data",

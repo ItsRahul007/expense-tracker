@@ -21,6 +21,9 @@ const TEMPLATES: [string, string[], number, number][] = [
   ["c-misc", ["Gift", "Haircut", "Donation", "Laundry"], 100, 1500],
 ];
 
+/** A full year, so the stats trend and month-by-month search have depth. */
+export const SAMPLE_MONTHS = 12;
+
 function pick<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
@@ -31,7 +34,7 @@ function pick<T>(items: T[]): T {
  * fixed ₹15,000 rent on the 1st of each month so totals look realistic.
  */
 export function generateSampleTransactions(
-  months = 6,
+  months = SAMPLE_MONTHS,
   perMonth = 25,
   now: number = Date.now(),
 ): NewTransaction[] {
