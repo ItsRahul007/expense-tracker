@@ -27,7 +27,7 @@ import type { ID } from "@/types/domain";
 
 /** How far back the quick day chips reach. "I forgot to log yesterday's auto"
  *  is the common case; anything older goes through the "Pick date" chip. */
-const DAY_CHOICES = 5;
+const DAY_CHOICES = 3;
 
 function atMidday(d: Date): number {
   const copy = new Date(d);
