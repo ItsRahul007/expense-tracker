@@ -1,6 +1,7 @@
 export { Button } from "./button";
 export { Card } from "./card";
 export { Chip } from "./chip";
+export { DatePicker } from "./date-picker";
 export { EmptyState } from "./empty-state";
 export { IconBadge } from "./icon-badge";
 export { MonthSwitcher } from "./month-switcher";

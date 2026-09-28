@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -12,7 +12,7 @@ import {
 
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
-import { Button, Card, Chip } from "@/components/ui";
+import { Button, Card, Chip, DatePicker } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import {
   amountTextToMinor,
@@ -25,16 +25,20 @@ import { currentMonth } from "@/lib/month";
 import { useAddTransaction, useCategories, useTransactions } from "@/queries";
 import type { ID } from "@/types/domain";
 
-/** How far back the day chips reach. A full date picker isn't here because
- *  "I forgot to log yesterday's auto" is the real case and a week covers it;
- *  older dates stay editable from the expense detail screen. */
+/** How far back the quick day chips reach. "I forgot to log yesterday's auto"
+ *  is the common case; anything older goes through the "Pick date" chip. */
 const DAY_CHOICES = 5;
+
+function atMidday(d: Date): number {
+  const copy = new Date(d);
+  copy.setHours(12, 0, 0, 0); // midday, so a DST shift can't move the calendar day
+  return copy.getTime();
+}
 
 function dayStart(offset: number): number {
   const d = new Date();
   d.setDate(d.getDate() - offset);
-  d.setHours(12, 0, 0, 0); // midday, so a DST shift can't move the calendar day
-  return d.getTime();
+  return atMidday(d);
 }
 
 export default function AddScreen() {
@@ -45,7 +49,8 @@ export default function AddScreen() {
 
   const [amountText, setAmountText] = useState("");
   const [chosenCategory, setChosenCategory] = useState<ID | null>(null);
-  const [dayOffset, setDayOffset] = useState(0);
+  const [occurredAt, setOccurredAt] = useState(() => dayStart(0));
+  const [showCalendar, setShowCalendar] = useState(false);
   const [note, setNote] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -56,7 +61,8 @@ export default function AddScreen() {
     chosenCategory ?? recent?.[0]?.categoryId ?? categories?.[0]?.id ?? null;
 
   const amountMinor = amountTextToMinor(amountText);
-  const occurredAt = useMemo(() => dayStart(dayOffset), [dayOffset]);
+  const pickedOlderDay = occurredAt < dayStart(DAY_CHOICES - 1);
+
   const canSave = amountMinor > 0 && categoryId !== null;
 
   const save = async () => {
@@ -166,11 +172,33 @@ export default function AddScreen() {
               <Chip
                 key={offset}
                 label={formatRelativeDay(dayStart(offset))}
-                selected={offset === dayOffset}
-                onPress={() => setDayOffset(offset)}
+                selected={dayStart(offset) === occurredAt}
+                onPress={() => {
+                  setOccurredAt(dayStart(offset));
+                  setShowCalendar(false);
+                }}
               />
             ))}
+            <Chip
+              label={pickedOlderDay ? formatRelativeDay(occurredAt) : "Pick date"}
+              selected={pickedOlderDay}
+              onPress={() => {
+                Keyboard.dismiss();
+                setShowCalendar((open) => !open);
+              }}
+            />
           </View>
+          {showCalendar ? (
+            <Card className="mt-3">
+              <DatePicker
+                value={occurredAt}
+                onChange={(day) => {
+                  setOccurredAt(atMidday(day));
+                  setShowCalendar(false);
+                }}
+              />
+            </Card>
+          ) : null}
 
           <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
             Note
