@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { ScrollView, View } from "react-native";
 
 import { SummaryCard } from "@/components/summary-card";
 import {
@@ -97,7 +97,15 @@ export default function HomeScreen() {
           <View className="mt-6 gap-5">
             {groups.map((group) => (
               <View key={group.ts}>
-                <SectionTitle title={formatRelativeDay(group.ts)} />
+                <SectionTitle
+                  title={formatRelativeDay(group.ts)}
+                  // A lone expense's row already shows the same amount.
+                  meta={
+                    group.items.length > 1
+                      ? `${formatMoney(group.totalMinor)} (${group.items.length} expenses)`
+                      : undefined
+                  }
+                />
                 <Card padded={false} className="overflow-hidden">
                   {group.items.map((tx, index) => {
                     const category = categoryById.get(tx.categoryId);
@@ -115,11 +123,6 @@ export default function HomeScreen() {
                     );
                   })}
                 </Card>
-                <Text className="font-sans mt-2 px-1 text-label text-muted">
-                  {group.items.length}{" "}
-                  {group.items.length === 1 ? "expense" : "expenses"} ·{" "}
-                  {formatMoney(group.totalMinor)}
-                </Text>
               </View>
             ))}
           </View>
