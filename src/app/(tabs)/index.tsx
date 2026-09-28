@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { FlatList, View } from "react-native";
 
 import { SummaryCard } from "@/components/summary-card";
 import {
@@ -47,6 +47,11 @@ function groupByDay(transactions: Transaction[]): DayGroup[] {
     }));
 }
 
+/** The 20px gap between day cards that `gap-5` gave the old ScrollView. */
+function DaySpacer() {
+  return <View className="h-5" />;
+}
+
 export default function HomeScreen() {
   const [month, setMonth] = useState<Month>(currentMonth());
 
@@ -76,61 +81,76 @@ export default function HomeScreen() {
         actions={[{ icon: "search", label: "Search", onPress: () => router.push("/search") }]}
       />
 
-      <ScrollView
+      {/* A FlatList rather than a ScrollView: a month can hold a hundred-plus
+          expenses, and mounting every row up front made each month switch
+          block the JS thread for ~300ms. Only the first few day cards render
+          now; the rest fill in as they scroll into view.
+          `key={month}` remounts it per month on purpose: `initialNumToRender`
+          only applies to a fresh list, so a reused one re-rendered the whole
+          previous month's window (~100ms) on every switch. */}
+      <FlatList
+        key={month}
+        data={isEmpty ? [] : groups}
+        keyExtractor={(group) => String(group.ts)}
+        initialNumToRender={4}
+        windowSize={7}
+        maxToRenderPerBatch={3}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
-      >
-        <View className="pb-4">
-          <MonthSwitcher month={month} onChange={setMonth} earliest={knownMonths?.[0]} />
-        </View>
+        ListHeaderComponent={
+          <View className={isEmpty ? "" : "mb-6"}>
+            <View className="pb-4">
+              <MonthSwitcher month={month} onChange={setMonth} earliest={knownMonths?.[0]} />
+            </View>
 
-        <SummaryCard
-          spentMinor={summary?.totalMinor ?? 0}
-          budgetMinor={budgetTotal}
-          caption="Spent this month"
-        />
-
-        {isEmpty ? (
-          <EmptyState
-            icon="add-circle-outline"
-            title="No expenses yet"
-            body="Tap the + button to record your first one."
-          />
-        ) : (
-          <View className="mt-6 gap-5">
-            {groups.map((group) => (
-              <View key={group.ts}>
-                <SectionTitle
-                  title={formatRelativeDay(group.ts)}
-                  // A lone expense's row already shows the same amount.
-                  meta={
-                    group.items.length > 1
-                      ? `${formatMoney(group.totalMinor)} (${group.items.length} expenses)`
-                      : undefined
-                  }
-                />
-                <Card padded={false} className="overflow-hidden">
-                  {group.items.map((tx, index) => {
-                    const category = categoryById.get(tx.categoryId);
-                    return (
-                      <TransactionRow
-                        key={tx.id}
-                        title={tx.note?.trim() || category?.name || "Expense"}
-                        subtitle={category?.name ?? "Uncategorised"}
-                        amountMinor={tx.amountMinor}
-                        icon={category?.icon ?? "ellipsis-horizontal"}
-                        color={category?.color ?? "#6B7280"}
-                        showSeparator={index < group.items.length - 1}
-                        onPress={() => router.push(`/transaction/${tx.id}`)}
-                      />
-                    );
-                  })}
-                </Card>
-              </View>
-            ))}
+            <SummaryCard
+              spentMinor={summary?.totalMinor ?? 0}
+              budgetMinor={budgetTotal}
+              caption="Spent this month"
+            />
+          </View>
+        }
+        ListEmptyComponent={
+          isEmpty ? (
+            <EmptyState
+              icon="add-circle-outline"
+              title="No expenses yet"
+              body="Tap the + button to record your first one."
+            />
+          ) : null
+        }
+        ItemSeparatorComponent={DaySpacer}
+        renderItem={({ item: group }) => (
+          <View>
+            <SectionTitle
+              title={formatRelativeDay(group.ts)}
+              // A lone expense's row already shows the same amount.
+              meta={
+                group.items.length > 1
+                  ? `${formatMoney(group.totalMinor)} (${group.items.length} expenses)`
+                  : undefined
+              }
+            />
+            <Card padded={false} className="overflow-hidden">
+              {group.items.map((tx, index) => {
+                const category = categoryById.get(tx.categoryId);
+                return (
+                  <TransactionRow
+                    key={tx.id}
+                    title={tx.note?.trim() || category?.name || "Expense"}
+                    subtitle={category?.name ?? "Uncategorised"}
+                    amountMinor={tx.amountMinor}
+                    icon={category?.icon ?? "ellipsis-horizontal"}
+                    color={category?.color ?? "#6B7280"}
+                    showSeparator={index < group.items.length - 1}
+                    onPress={() => router.push(`/transaction/${tx.id}`)}
+                  />
+                );
+              })}
+            </Card>
           </View>
         )}
-      </ScrollView>
+      />
     </View>
   );
 }
