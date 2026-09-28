@@ -11,17 +11,20 @@ export type HeaderAction = {
   onPress: () => void;
 };
 
-/** Large screen title with optional icon actions on the right. */
+/** Large screen title with optional icon actions on the right. `aside` is a
+ *  short two-line summary (value over caption) shown right of the title. */
 export function ScreenHeader({
   title,
   subtitle,
   actions = [],
   onBack,
+  aside,
 }: {
   title: string;
   subtitle?: string;
   actions?: HeaderAction[];
   onBack?: () => void;
+  aside?: { value: string; caption: string };
 }) {
   const insets = useSafeAreaInsets();
   const palette = usePalette();
@@ -47,6 +50,13 @@ export function ScreenHeader({
             <Text className="font-sans mt-0.5 text-label text-muted">{subtitle}</Text>
           ) : null}
         </View>
+
+        {aside ? (
+          <View className="items-end">
+            <Text className="font-sans-semibold text-body text-fg">{aside.value}</Text>
+            <Text className="font-sans text-label text-muted">{aside.caption}</Text>
+          </View>
+        ) : null}
 
         {actions.map((action) => (
           <Pressable

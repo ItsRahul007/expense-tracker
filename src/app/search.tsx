@@ -1,19 +1,52 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, TextInput, View } from "react-native";
 
 import {
   Card,
   Chip,
   EmptyState,
   ScreenHeader,
+  SectionTitle,
   TransactionRow,
 } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import { formatMoney, formatRelativeDay } from "@/lib/format";
+import { currentMonth, monthOf, monthShort, type Month } from "@/lib/month";
 import { useCategories, useTransactions } from "@/queries";
-import type { Category, ID } from "@/types/domain";
+import type { Category, ID, Transaction } from "@/types/domain";
+
+type MonthGroup = { month: Month; totalMinor: number; items: Transaction[] };
+
+/** Groups into local calendar months, newest first. */
+function groupByMonth(transactions: Transaction[]): MonthGroup[] {
+  const months = new Map<Month, Transaction[]>();
+
+  for (const tx of transactions) {
+    const key = monthOf(tx.occurredAt);
+    const bucket = months.get(key);
+    if (bucket) bucket.push(tx);
+    else months.set(key, [tx]);
+  }
+
+  // "YYYY-MM" sorts lexically, so a plain string compare orders the months.
+  return [...months.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([month, items]) => ({
+      month,
+      items,
+      totalMinor: items.reduce((sum, tx) => sum + tx.amountMinor, 0),
+    }));
+}
+
+/** "Sep" this year, "Sep 2025" for earlier years. */
+function monthHeading(month: Month): string {
+  const year = month.slice(0, 4);
+  return year === currentMonth().slice(0, 4)
+    ? monthShort(month)
+    : `${monthShort(month)} ${year}`;
+}
 
 export default function SearchScreen() {
   const palette = usePalette();
@@ -50,12 +83,27 @@ export default function SearchScreen() {
     return map;
   }, [categories]);
 
-  const rows = hasQuery ? (results ?? []) : [];
+  const rows = useMemo(
+    () => (hasQuery ? (results ?? []) : []),
+    [hasQuery, results],
+  );
   const total = rows.reduce((sum, tx) => sum + tx.amountMinor, 0);
+  const groups = useMemo(() => groupByMonth(rows), [rows]);
 
   return (
     <View className="flex-1 bg-bg">
-      <ScreenHeader title="Search" onBack={() => router.back()} />
+      <ScreenHeader
+        title="Search"
+        onBack={() => router.back()}
+        aside={
+          rows.length > 0
+            ? {
+                value: formatMoney(total),
+                caption: `${rows.length} ${rows.length === 1 ? "result" : "results"}`,
+              }
+            : undefined
+        }
+      />
 
       <View className="px-4 pb-3">
         <View className="flex-row items-center gap-2 rounded-2xl border border-border bg-card px-3">
@@ -122,27 +170,33 @@ export default function SearchScreen() {
           />
         ) : (
           <>
-            <Text className="font-sans-medium mb-2 px-1 text-label text-muted">
-              {rows.length} {rows.length === 1 ? "result" : "results"} ·{" "}
-              {formatMoney(total)}
-            </Text>
-            <Card padded={false} className="overflow-hidden">
-              {rows.map((tx, index) => {
-                const category = categoryById.get(tx.categoryId);
-                return (
-                  <TransactionRow
-                    key={tx.id}
-                    title={tx.note?.trim() || category?.name || "Expense"}
-                    subtitle={`${category?.name ?? "Uncategorised"} · ${formatRelativeDay(tx.occurredAt)}`}
-                    amountMinor={tx.amountMinor}
-                    icon={category?.icon ?? "ellipsis-horizontal"}
-                    color={category?.color ?? "#6B7280"}
-                    showSeparator={index < rows.length - 1}
-                    onPress={() => router.push(`/transaction/${tx.id}`)}
+            <View className="gap-5">
+              {groups.map((group) => (
+                <View key={group.month}>
+                  <SectionTitle
+                    title={monthHeading(group.month)}
+                    meta={`${formatMoney(group.totalMinor)} (${group.items.length} ${group.items.length === 1 ? "result" : "results"})`}
                   />
-                );
-              })}
-            </Card>
+                  <Card padded={false} className="overflow-hidden">
+                    {group.items.map((tx, index) => {
+                      const category = categoryById.get(tx.categoryId);
+                      return (
+                        <TransactionRow
+                          key={tx.id}
+                          title={tx.note?.trim() || category?.name || "Expense"}
+                          subtitle={`${category?.name ?? "Uncategorised"} · ${formatRelativeDay(tx.occurredAt)}`}
+                          amountMinor={tx.amountMinor}
+                          icon={category?.icon ?? "ellipsis-horizontal"}
+                          color={category?.color ?? "#6B7280"}
+                          showSeparator={index < group.items.length - 1}
+                          onPress={() => router.push(`/transaction/${tx.id}`)}
+                        />
+                      );
+                    })}
+                  </Card>
+                </View>
+              ))}
+            </View>
           </>
         )}
       </ScrollView>
