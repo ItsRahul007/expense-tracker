@@ -18,6 +18,7 @@ import {
 } from "@/types/domain";
 import {
   QueryClient,
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -41,7 +42,8 @@ import { openDatabaseSync } from "expo-sqlite";
 
 import { DATABASE_NAME } from "@/constants/common";
 import { formatCsvRow } from "@/lib/csv";
-import { Month, monthRange } from "@/lib/month";
+import { Month, monthRange, shiftMonth } from "@/lib/month";
+import { useEffect } from "react";
 import { useDrizzle } from "./helper";
 
 const DEFAULT_SETTINGS: Settings = { theme: "system" };
@@ -105,14 +107,18 @@ export function useCategories(): QueryResult<Category[]> {
   return { data, isPending, error };
 }
 
-export function useTransactions(
-  month: Month | null,
-  filters?: TxFilters,
-): QueryResult<Transaction[]> {
-  const db = useDrizzle();
+type Db = ReturnType<typeof useDrizzle>;
+
+/*
+ * Month-scoped queries are defined once as option factories so the hooks and
+ * `usePrefetchAdjacentMonths` share the exact same key and query function —
+ * a prefetch under a slightly different key would warm a cache nobody reads.
+ */
+
+function transactionsQuery(db: Db, month: Month | null, filters?: TxFilters) {
   const bounds = month ? monthRange(month) : null;
 
-  const { data, isPending, error } = useQuery<Transaction[]>({
+  return queryOptions<Transaction[]>({
     queryKey: ["transaction", month, filters],
     queryFn: async () => {
       const conditions: SQL<unknown>[] = [];
@@ -169,6 +175,16 @@ export function useTransactions(
         .all();
     },
   });
+}
+
+export function useTransactions(
+  month: Month | null,
+  filters?: TxFilters,
+): QueryResult<Transaction[]> {
+  const db = useDrizzle();
+  const { data, isPending, error } = useQuery(
+    transactionsQuery(db, month, filters),
+  );
 
   return {
     data,
@@ -177,10 +193,8 @@ export function useTransactions(
   };
 }
 
-export function useMonthSummary(month: Month): QueryResult<MonthSummary> {
-  const db = useDrizzle();
-
-  const { data, isPending, error } = useQuery<MonthSummary>({
+function monthSummaryQuery(db: Db, month: Month) {
+  return queryOptions<MonthSummary>({
     queryKey: ["monthSummary", month],
     queryFn: async () => {
       const { from, to } = monthRange(month);
@@ -215,6 +229,11 @@ export function useMonthSummary(month: Month): QueryResult<MonthSummary> {
       };
     },
   });
+}
+
+export function useMonthSummary(month: Month): QueryResult<MonthSummary> {
+  const db = useDrizzle();
+  const { data, isPending, error } = useQuery(monthSummaryQuery(db, month));
 
   return {
     data,
@@ -279,11 +298,8 @@ export function useMonthTrend(months: Month[]): QueryResult<MonthPoint[]> {
   };
 }
 
-/** Budgets for a month joined with actual spend, ordered by category. */
-export function useBudgets(month: Month): QueryResult<BudgetStatus[]> {
-  const db = useDrizzle();
-
-  const { data, isPending, error } = useQuery<BudgetStatus[]>({
+function budgetsQuery(db: Db, month: Month) {
+  return queryOptions<BudgetStatus[]>({
     queryKey: ["budget", month],
     queryFn: () => {
       const { from, to } = monthRange(month);
@@ -324,8 +340,40 @@ export function useBudgets(month: Month): QueryResult<BudgetStatus[]> {
         );
     },
   });
+}
+
+/** Budgets for a month joined with actual spend, ordered by category. */
+export function useBudgets(month: Month): QueryResult<BudgetStatus[]> {
+  const db = useDrizzle();
+  const { data, isPending, error } = useQuery(budgetsQuery(db, month));
 
   return { data, isPending, error };
+}
+
+/**
+ * Warms the cache for the months either side of `month`, so paging with the
+ * month switcher lands on data that's already there instead of rendering one
+ * empty frame of zeros while the new month's queries run. Covers everything a
+ * month screen reads: transactions, summary and budgets.
+ *
+ * The next month is skipped once it's in the future — the switcher can't go
+ * there, so there's nothing to warm.
+ */
+export function usePrefetchAdjacentMonths(month: Month): void {
+  const db = useDrizzle();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const neighbours = [shiftMonth(month, -1), shiftMonth(month, 1)].filter(
+      (m) => monthRange(m).from <= Date.now(),
+    );
+
+    for (const m of neighbours) {
+      queryClient.prefetchQuery(transactionsQuery(db, m));
+      queryClient.prefetchQuery(monthSummaryQuery(db, m));
+      queryClient.prefetchQuery(budgetsQuery(db, m));
+    }
+  }, [db, queryClient, month]);
 }
 
 export function useTransaction(id: ID): QueryResult<Transaction | null> {

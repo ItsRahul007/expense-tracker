@@ -18,6 +18,7 @@ import {
   useCategories,
   useKnownMonths,
   useMonthSummary,
+  usePrefetchAdjacentMonths,
   useTransactions,
 } from "@/queries";
 import type { Category, ID, Transaction } from "@/types/domain";
@@ -54,6 +55,8 @@ export default function HomeScreen() {
   const { data: summary } = useMonthSummary(month);
   const { data: budgets } = useBudgets(month);
   const { data: knownMonths } = useKnownMonths();
+  // Loads the neighbouring months ahead of time so switching never flashes zeros.
+  usePrefetchAdjacentMonths(month);
 
   const groups = useMemo(() => groupByDay(transactions ?? []), [transactions]);
 
