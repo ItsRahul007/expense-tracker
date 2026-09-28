@@ -6,17 +6,26 @@ import { Alert, ScrollView, Text, View } from "react-native";
 
 import { Card, Chip, ScreenHeader, SectionTitle, SettingsRow } from "@/components/ui";
 import { formatISODate } from "@/lib/format";
-import { generateSampleTransactions } from "@/lib/sample-data";
 import {
   exportAllData,
   useCategories,
-  useImportTransactions,
   useKnownMonths,
   useSetSetting,
   useSetting,
   useTransactions,
 } from "@/queries";
 import type { ThemePreference } from "@/types/domain";
+
+/**
+ * Metro folds `__DEV__` to `false` in release builds and drops the dead
+ * `require` before collecting dependencies, so the developer tools and the
+ * sample data behind them never reach a preview or production bundle. A static
+ * `import` would ship them even with the render wrapped in `__DEV__`.
+ */
+const DeveloperSection: (() => React.JSX.Element) | null = __DEV__
+  ? // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("@/components/developer-section").DeveloperSection
+  : null;
 
 const THEMES: { value: ThemePreference; label: string }[] = [
   { value: "system", label: "System" },
@@ -32,19 +41,6 @@ export default function SettingsScreen() {
   const { data: allEntries } = useTransactions(null);
 
   const [exporting, setExporting] = useState(false);
-  const importTransactions = useImportTransactions();
-
-  const addSampleData = () => {
-    const transactions = generateSampleTransactions();
-    importTransactions.mutateAsync({ categories: [], transactions }).then(
-      () => Alert.alert("Sample data added", `${transactions.length} expenses across 6 months.`),
-      (error: unknown) =>
-        Alert.alert(
-          "Could not add sample data",
-          error instanceof Error ? error.message : "The write failed.",
-        ),
-    );
-  };
 
   const exportLedger = async () => {
     setExporting(true);
@@ -141,20 +137,7 @@ export default function SettingsScreen() {
           </Card>
         </View>
 
-        {__DEV__ ? (
-          <View className="mt-6">
-            <SectionTitle title="Developer" />
-            <Card padded={false} className="overflow-hidden">
-              <SettingsRow
-                icon="flask-outline"
-                label="Add sample data"
-                value={importTransactions.isPending ? "Adding…" : undefined}
-                onPress={importTransactions.isPending ? undefined : addSampleData}
-                showSeparator={false}
-              />
-            </Card>
-          </View>
-        ) : null}
+        {DeveloperSection ? <DeveloperSection /> : null}
 
         <Text className="font-sans mt-5 px-1 text-label text-muted">
           Everything is stored on this device only. Export now and then — removing
