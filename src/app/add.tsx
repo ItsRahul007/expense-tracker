@@ -12,7 +12,7 @@ import {
 
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
-import { Button, Card, Chip, DatePicker } from "@/components/ui";
+import { Button, Card, Chip, DatePickerDialog } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import {
   amountTextToMinor,
@@ -184,21 +184,19 @@ export default function AddScreen() {
               selected={pickedOlderDay}
               onPress={() => {
                 Keyboard.dismiss();
-                setShowCalendar((open) => !open);
+                setShowCalendar(true);
               }}
             />
           </View>
-          {showCalendar ? (
-            <Card className="mt-3">
-              <DatePicker
-                value={occurredAt}
-                onChange={(day) => {
-                  setOccurredAt(atMidday(day));
-                  setShowCalendar(false);
-                }}
-              />
-            </Card>
-          ) : null}
+          <DatePickerDialog
+            visible={showCalendar}
+            value={occurredAt}
+            onChange={(day) => {
+              setOccurredAt(atMidday(day));
+              setShowCalendar(false);
+            }}
+            onClose={() => setShowCalendar(false)}
+          />
 
           <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
             Note

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Modal, Pressable, Text, View } from "react-native";
 
 import { monthOf, type Month } from "@/lib/month";
 
+import { Card } from "./card";
 import { MonthSwitcher } from "./month-switcher";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -108,5 +109,57 @@ export function DatePicker({
         </View>
       ))}
     </View>
+  );
+}
+
+/**
+ * `DatePicker` as a centred dialog over a dimmed backdrop, the way the system
+ * picker used to appear. Tapping a day picks it; tapping outside or Cancel
+ * closes without changing anything.
+ */
+export function DatePickerDialog({
+  visible,
+  value,
+  onChange,
+  onClose,
+}: {
+  visible: boolean;
+  value: number;
+  onChange: (day: Date) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <Pressable
+        onPress={onClose}
+        accessibilityLabel="Close date picker"
+        className="flex-1 items-center justify-center bg-black/50 px-4"
+      >
+        {/* Swallows taps so pressing inside the card doesn't reach the backdrop. */}
+        <Pressable onPress={() => {}} className="w-full max-w-[380px]">
+          <Card>
+            <Text className="font-sans-semibold mb-3 px-1 text-headline text-fg">
+              Pick a date
+            </Text>
+            {/* Remounted on each open so the grid starts at the chosen month. */}
+            {visible ? <DatePicker value={value} onChange={onChange} /> : null}
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              hitSlop={8}
+              className="mt-3 self-end px-2 py-1 active:opacity-50"
+            >
+              <Text className="font-sans-semibold text-label text-accent">Cancel</Text>
+            </Pressable>
+          </Card>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
