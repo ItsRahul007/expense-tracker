@@ -31,7 +31,7 @@ export function DeveloperSection() {
     const budgets = generateSampleBudgets(transactions);
 
     try {
-      await importTransactions.mutateAsync({ categories: [], transactions });
+      await importTransactions.mutateAsync({ categories: [], transactions, budgets: [] });
       await upsertBudgets.mutateAsync(budgets);
       Alert.alert(
         "Sample data added",

@@ -2,28 +2,34 @@ import { router, useLocalSearchParams } from "expo-router";
 import { View, Text } from "react-native";
 
 import { Button, IconBadge } from "@/components/ui";
-import type { Month } from "@/lib/month";
-import { useBudgets, useCategories, useUpsertBudget } from "@/queries";
+import { scopeKind, scopeLabel } from "@/lib/budget-scope";
+import { monthLabel, type Month } from "@/lib/month";
+import { useAllBudgets, useCategories, useDeleteBudget } from "@/queries";
 
 /** A dedicated formSheet route rather than an in-app Modal — that's the only
  *  way to get the native slide-up-from-bottom animation and drag-to-dismiss
- *  gesture that /add and /add-budget already have. */
+ *  gesture that /add and /add-budget already have.
+ *
+ *  A budget covering several months offers two ways out: drop it entirely, or
+ *  cut just the month being viewed out of it — "every month except December"
+ *  without having to rebuild the budget as two ranges by hand. */
 export default function DeleteBudgetScreen() {
-  const { categoryId, month } = useLocalSearchParams<{
-    categoryId: string;
+  const { budgetId, month } = useLocalSearchParams<{
+    budgetId: string;
     month: Month;
   }>();
 
   const { data: categories } = useCategories();
-  const { data: budgets } = useBudgets(month);
-  const upsertBudget = useUpsertBudget();
+  const { data: budgets } = useAllBudgets();
+  const deleteBudget = useDeleteBudget();
 
-  const category = categories?.find((c) => c.id === categoryId);
-  const budget = budgets?.find((b) => b.categoryId === categoryId);
+  const budget = budgets?.find((b) => b.id === budgetId);
+  const category = categories?.find((c) => c.id === budget?.categoryId);
+  const multiMonth = budget ? scopeKind(budget) !== "month" : false;
 
-  const confirm = async () => {
+  const remove = async (onlyMonth?: Month) => {
     if (!budget) return;
-    await upsertBudget.mutateAsync({ ...budget, limitMinor: 0 });
+    await deleteBudget.mutateAsync({ id: budget.id, onlyMonth });
     router.back();
   };
 
@@ -39,18 +45,36 @@ export default function DeleteBudgetScreen() {
             Delete this budget?
           </Text>
           <Text className="font-sans mt-0.5 text-body text-muted">
-            {category?.name ?? "This category"} will have no limit for {month}.
+            {category?.name ?? "This category"}
+            {budget ? ` · ${scopeLabel(budget)}` : ""}
           </Text>
         </View>
       </View>
 
       <View className="mt-8 gap-3">
-        <Button
-          label="Delete"
-          variant="danger"
-          onPress={confirm}
-          loading={upsertBudget.isPending}
-        />
+        {multiMonth ? (
+          <>
+            <Button
+              label={`Remove for ${monthLabel(month)} only`}
+              variant="danger"
+              onPress={() => remove(month)}
+              loading={deleteBudget.isPending}
+            />
+            <Button
+              label="Delete for all months"
+              variant="secondary"
+              onPress={() => remove()}
+              disabled={deleteBudget.isPending}
+            />
+          </>
+        ) : (
+          <Button
+            label="Delete"
+            variant="danger"
+            onPress={() => remove()}
+            loading={deleteBudget.isPending}
+          />
+        )}
         <Button label="Cancel" variant="secondary" onPress={() => router.back()} />
       </View>
     </View>

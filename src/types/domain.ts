@@ -66,15 +66,51 @@ export type TransactionPatch = Partial<Omit<Transaction, "id">> & { id: ID };
 export type ImportRequest = {
   categories: Category[];
   transactions: NewTransaction[];
+  /** Upserted by category + scope: a budget with the same category, start and
+   *  end as one already stored replaces its limit rather than adding a twin. */
+  budgets: NewBudget[];
 };
 
-export type Budget = {
+/**
+ * Which months a budget applies to, inclusive at both ends.
+ *
+ *  - one month:   `startMonth === endMonth`
+ *  - date range:  `startMonth < endMonth`
+ *  - every month: `endMonth === null` — from `startMonth` onwards, forever
+ *
+ * Month-granular on purpose: a budget is a *monthly* limit, so a range that
+ * started mid-month would have no sensible limit for its first month.
+ */
+export type BudgetScope = {
+  startMonth: Month;
+  endMonth: Month | null;
+};
+
+export type Budget = BudgetScope & {
+  id: ID;
   categoryId: ID;
-  month: Month;
+  /** Monthly limit, in paise — the same limit for every month in the scope. */
   limitMinor: number;
+  /** Epoch ms of the last save. Where budgets overlap, the latest save
+   *  applies — see `src/lib/budget-scope.ts`. */
+  createdAt: number;
 };
 
-/** A budget joined with what's actually been spent against it. */
+/** What the add form and the importer submit. The data layer assigns the rest. */
+export type NewBudget = Omit<Budget, "id" | "createdAt">;
+
+/**
+ * What `useUpsertBudget` takes. With an `id`, that budget is edited in place;
+ * without one, a budget with the same category and scope is updated if it
+ * exists and a new one created if not. A limit of 0 or less deletes.
+ */
+export type BudgetInput = NewBudget & { id?: ID };
+
+/** What `useDeleteBudget` takes. With `onlyMonth`, the budget is cut out of
+ *  that single month and keeps applying either side of it. */
+export type BudgetDeletion = { id: ID; onlyMonth?: Month };
+
+/** The budget that applies to a month, joined with what's been spent in it. */
 export type BudgetStatus = Budget & { spentMinor: number };
 
 export type CategoryTotal = { categoryId: ID; totalMinor: number };

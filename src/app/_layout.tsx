@@ -143,7 +143,9 @@ function RootNavigator() {
             presentation: "formSheet",
             sheetGrabberVisible: true,
             sheetCornerRadius: 24,
-            sheetAllowedDetents: [0.6],
+            // Taller than it was: the form now also asks which months the
+            // budget covers, and a date range adds two month pickers.
+            sheetAllowedDetents: [0.8],
           }}
         />
         <Stack.Screen
@@ -152,9 +154,9 @@ function RootNavigator() {
             presentation: "formSheet",
             sheetGrabberVisible: true,
             sheetCornerRadius: 24,
-            // Just an icon, a line of text and two buttons — a small detent
-            // keeps it from looming like the full add-budget form.
-            sheetAllowedDetents: [0.3],
+            // Just an icon, a line of text and two or three buttons — a small
+            // detent keeps it from looming like the full add-budget form.
+            sheetAllowedDetents: [0.4],
           }}
         />
         <Stack.Screen

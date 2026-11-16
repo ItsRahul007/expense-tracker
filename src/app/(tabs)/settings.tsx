@@ -58,7 +58,7 @@ export default function SettingsScreen() {
         await Sharing.shareAsync(file.uri, {
           mimeType: "text/csv",
           UTI: "public.comma-separated-values-text",
-          dialogTitle: "Export expenses",
+          dialogTitle: "Export expenses and budgets",
         });
       } else {
         Alert.alert("Saved", `Written to ${file.uri}`);

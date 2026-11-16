@@ -9,19 +9,23 @@ export function MonthSwitcher({
   month,
   onChange,
   earliest,
+  allowFuture = false,
 }: {
   month: Month;
   onChange: (month: Month) => void;
   /** Oldest month worth paging back to. Omit for unlimited history. */
   earliest?: Month;
+  /** Page past the current month — for planning, e.g. a budget's date range.
+   *  Off by default, since an expense can't be in a month that hasn't started. */
+  allowFuture?: boolean;
 }) {
   const palette = usePalette();
   const previous = shiftMonth(month, -1);
   const next = shiftMonth(month, 1);
 
   const canGoBack = earliest ? previous >= earliest : true;
-  // Never page into a month that cannot contain expenses yet.
-  const canGoForward = next <= currentMonth();
+  // Never page into a month that cannot contain expenses yet, unless asked.
+  const canGoForward = allowFuture || next <= currentMonth();
 
   return (
     <View className="h-10 flex-row items-center justify-between self-stretch rounded-full border border-border bg-card px-1">

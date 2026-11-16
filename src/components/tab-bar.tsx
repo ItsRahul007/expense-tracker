@@ -33,6 +33,11 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const right = state.routes.slice(2);
 
   const onBudgets = state.routes[state.index]?.name === "budgets";
+  // The Budgets screen publishes the month it's showing as a route param, so a
+  // budget added from there starts on that month rather than always today's.
+  const budgetsMonth = onBudgets
+    ? (state.routes[state.index]?.params as { month?: string } | undefined)?.month
+    : undefined;
 
   const renderTab = (route: (typeof state.routes)[number]) => {
     const index = state.routes.findIndex((r) => r.key === route.key);
@@ -81,7 +86,14 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         {/* Raised, so it reads as an action rather than a fifth destination. */}
         <View className="w-[76px] items-center">
           <Pressable
-            onPress={() => router.push(onBudgets ? "/add-budget" : "/add")}
+            onPress={() =>
+              onBudgets
+                ? router.push({
+                    pathname: "/add-budget",
+                    params: budgetsMonth ? { month: budgetsMonth } : {},
+                  })
+                : router.push("/add")
+            }
             accessibilityRole="button"
             accessibilityLabel={onBudgets ? "Add budget" : "Add expense"}
             className="-mt-6 h-14 w-14 items-center justify-center rounded-full bg-brand active:opacity-80"

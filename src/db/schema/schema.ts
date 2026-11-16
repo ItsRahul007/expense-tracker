@@ -1,7 +1,6 @@
 import {
   index,
   integer,
-  primaryKey,
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
@@ -49,17 +48,29 @@ const transaction = sqliteTable(
   ],
 );
 
+/**
+ * A monthly limit on a category, applying to every month from `startMonth`
+ * to `endMonth` inclusive. `endMonth` null means "every month from the start
+ * onwards"; `startMonth === endMonth` is a one-month budget.
+ *
+ * Budgets may overlap — "₹5,000 every month, ₹8,000 in December" is two rows.
+ * Which one applies to a given month is decided in `src/lib/budget-scope.ts`,
+ * not here.
+ */
 const budget = sqliteTable(
   "budgets",
   {
+    id: text("id").primaryKey(),
     // Same "no action" reasoning as `transaction.categoryId` above.
     categoryId: text("category_id")
       .references(() => category.id, { onDelete: "no action" })
       .notNull(),
-    month: text("month").notNull(),
+    startMonth: text("start_month").notNull(),
+    endMonth: text("end_month"),
     limitMinor: integer("limit_minor").notNull(),
+    createdAt: integer("created_at").notNull(),
   },
-  (table) => [primaryKey({ columns: [table.categoryId, table.month] })],
+  (table) => [index("budgets_category_id_idx").on(table.categoryId)],
 );
 
 const settings = sqliteTable("settings", {

@@ -1,5 +1,5 @@
 /**
- * Turning a CSV file into expenses.
+ * Turning a CSV file into expenses and budgets.
  *
  * Two pure steps, deliberately separate and deliberately free of any database
  * access:
@@ -19,13 +19,16 @@
 
 import { CATEGORY_COLORS } from "@/constants/category-options";
 import type {
+  Budget,
   Category,
   ID,
   ImportRequest,
+  NewBudget,
   NewTransaction,
   Transaction,
 } from "@/types/domain";
 
+import { sameScope } from "./budget-scope";
 import { makeCategoryId } from "./category-id";
 import { isBlankRow, parseCsvRows } from "./csv";
 
@@ -45,8 +48,23 @@ export type SkippedRow = {
   reason: string;
 };
 
+/** A budget row that parsed cleanly, still holding its category as written. */
+export type ImportedBudget = {
+  row: number;
+  categoryName: string;
+  limitMinor: number;
+  startMonth: string;
+  /** Null when the To cell was empty: every month from `startMonth` on. */
+  endMonth: string | null;
+};
+
 export type LedgerCsv =
-  | { ok: true; rows: ImportedRow[]; skipped: SkippedRow[] }
+  | {
+      ok: true;
+      rows: ImportedRow[];
+      budgets: ImportedBudget[];
+      skipped: SkippedRow[];
+    }
   | { ok: false; error: string };
 
 /** A candidate row paired with the expense it would become. */
@@ -58,8 +76,21 @@ export type ImportEntry = {
   duplicate: boolean;
 };
 
+/**
+ * A candidate budget paired with what it would do to the stored ones:
+ *  - `new`: nothing with this category and scope exists yet;
+ *  - `update`: one does, with a different limit, which the file's replaces;
+ *  - `same`: one does with this exact limit — nothing to write.
+ */
+export type BudgetImportEntry = {
+  row: ImportedBudget;
+  budget: NewBudget;
+  status: "new" | "update" | "same";
+};
+
 export type ImportPlan = {
   entries: ImportEntry[];
+  budgets: BudgetImportEntry[];
   /** Categories the file names that don't exist yet, drafted and ready to insert. */
   newCategories: Category[];
   skipped: SkippedRow[];
@@ -283,6 +314,144 @@ export function parseCsvAmount(value: string): number | null {
   return minor;
 }
 
+/**
+ * A month cell → "YYYY-MM", or null. Accepts what the export writes
+ * (`2026-11`) plus `11/2026`, `Nov 2026`, `November 2026`, and any full date
+ * `parseCsvDate` can read, taking its month.
+ */
+export function parseCsvMonth(value: string): string | null {
+  const text = value.trim();
+  if (text === "") return null;
+
+  const format = (year: number, month: number) =>
+    month >= 1 && month <= 12 && year >= 1000 && year <= 9999
+      ? `${year}-${String(month).padStart(2, "0")}`
+      : null;
+
+  const iso = /^(\d{4})-(\d{1,2})$/.exec(text);
+  if (iso) return format(+iso[1], +iso[2]);
+
+  const numeric = /^(\d{1,2})[/.-](\d{4})$/.exec(text);
+  if (numeric) return format(+numeric[2], +numeric[1]);
+
+  const named = /^([A-Za-z]{3,})[\s,-]+(\d{4})$/.exec(text);
+  if (named) {
+    const month = monthFromName(named[1]);
+    return month === null ? null : format(+named[2], month);
+  }
+
+  const date = parseCsvDate(text);
+  if (date === null) return null;
+  const d = new Date(date);
+  return format(d.getFullYear(), d.getMonth() + 1);
+}
+
+// --- the budgets table --------------------------------------------------------
+
+/**
+ * The header cell that starts the budgets table. Deliberately not something an
+ * expense file would ever have as a column name: everything from this row down
+ * is read as budgets, so a false match would swallow expenses.
+ */
+export const BUDGET_SECTION_MARKER = "budget category";
+
+type BudgetColumnMap = { category: number; limit: number; from: number; to: number };
+
+const BUDGET_HEADER_ALIASES: Record<keyof BudgetColumnMap, string[]> = {
+  category: [BUDGET_SECTION_MARKER],
+  limit: ["monthly limit", "limit", "budget", "amount", "monthly budget"],
+  from: ["from", "from month", "start", "start month", "starts"],
+  to: ["to", "to month", "end", "end month", "until", "ends"],
+};
+
+function isBudgetHeader(cells: string[]): boolean {
+  return cells.some((cell) => normaliseHeader(cell) === BUDGET_SECTION_MARKER);
+}
+
+function readBudgetHeader(cells: string[]): BudgetColumnMap | null {
+  const found: Partial<BudgetColumnMap> = {};
+  cells.forEach((cell, index) => {
+    const name = normaliseHeader(cell);
+    for (const key of Object.keys(BUDGET_HEADER_ALIASES) as (keyof BudgetColumnMap)[]) {
+      if (found[key] === undefined && BUDGET_HEADER_ALIASES[key].includes(name)) {
+        found[key] = index;
+        return;
+      }
+    }
+  });
+  if (found.category === undefined || found.limit === undefined || found.from === undefined) {
+    return null;
+  }
+  // No To column at all reads the same as an empty one: every month onwards.
+  return { category: found.category, limit: found.limit, from: found.from, to: found.to ?? -1 };
+}
+
+type CsvRecord = { row: number; cells: string[] };
+
+function readBudgets(
+  records: CsvRecord[],
+): { budgets: ImportedBudget[]; skipped: SkippedRow[] } | { error: string } {
+  const columns = readBudgetHeader(records[0].cells);
+  if (!columns) {
+    return {
+      error:
+        "Found a budgets table, but couldn’t find its Monthly Limit and From columns.",
+    };
+  }
+
+  const budgets: ImportedBudget[] = [];
+  const skipped: SkippedRow[] = [];
+  const cellAt = (cells: string[], index: number) =>
+    index < 0 ? "" : (cells[index] ?? "").trim();
+
+  for (const { row, cells } of records.slice(1)) {
+    const categoryText = cellAt(cells, columns.category);
+    const limitText = cellAt(cells, columns.limit);
+    const fromText = cellAt(cells, columns.from);
+    const toText = cellAt(cells, columns.to);
+
+    if (categoryText === "") {
+      skipped.push({ row, reason: "Budget has no category" });
+      continue;
+    }
+
+    const limitMinor = parseCsvAmount(limitText);
+    if (limitMinor === null || limitMinor <= 0) {
+      skipped.push({
+        row,
+        reason: limitText === "" ? "Budget has no limit" : `Couldn’t read the budget limit “${limitText}”`,
+      });
+      continue;
+    }
+
+    const startMonth = parseCsvMonth(fromText);
+    if (startMonth === null) {
+      skipped.push({
+        row,
+        reason: fromText === "" ? "Budget has no From month" : `Couldn’t read the month “${fromText}”`,
+      });
+      continue;
+    }
+
+    let endMonth: string | null = null;
+    if (toText !== "") {
+      endMonth = parseCsvMonth(toText);
+      if (endMonth === null) {
+        skipped.push({ row, reason: `Couldn’t read the month “${toText}”` });
+        continue;
+      }
+      if (endMonth < startMonth) {
+        skipped.push({ row, reason: `Budget ends (“${toText}”) before it starts` });
+        continue;
+      }
+    }
+
+    budgets.push({ row, categoryName: categoryText, limitMinor, startMonth, endMonth });
+  }
+
+  return { budgets, skipped };
+}
+
 // --- step one: text → rows --------------------------------------------------
 
 /**
@@ -301,6 +470,25 @@ export function parseLedgerCsv(text: string): LedgerCsv {
 
   if (records.length === 0) {
     return { ok: false, error: "That file has nothing in it." };
+  }
+
+  // Everything from the budgets header down is the budgets table — see
+  // `exportAllData`. A file can also be budgets alone.
+  const budgetStart = records.findIndex((record) => isBudgetHeader(record.cells));
+  let budgets: ImportedBudget[] = [];
+  const budgetSkipped: SkippedRow[] = [];
+  if (budgetStart !== -1) {
+    const read = readBudgets(records.slice(budgetStart));
+    if ("error" in read) return { ok: false, error: read.error };
+    budgets = read.budgets;
+    budgetSkipped.push(...read.skipped);
+    records.splice(budgetStart);
+  }
+
+  if (records.length === 0) {
+    return budgets.length === 0 && budgetSkipped.length === 0
+      ? { ok: false, error: "That file has a budgets header row and nothing under it." }
+      : { ok: true, rows: [], budgets, skipped: budgetSkipped };
   }
 
   const header = readHeader(records[0].cells);
@@ -324,7 +512,7 @@ export function parseLedgerCsv(text: string): LedgerCsv {
     };
   }
 
-  if (body.length === 0) {
+  if (body.length === 0 && budgets.length === 0 && budgetSkipped.length === 0) {
     return { ok: false, error: "That file has a header row and nothing under it." };
   }
 
@@ -377,7 +565,7 @@ export function parseLedgerCsv(text: string): LedgerCsv {
     });
   }
 
-  return { ok: true, rows, skipped };
+  return { ok: true, rows, budgets, skipped: [...skipped, ...budgetSkipped] };
 }
 
 // --- step two: rows → a plan ------------------------------------------------
@@ -424,14 +612,18 @@ function fingerprint(tx: {
  */
 export function planImport({
   rows,
+  budgets = [],
   skipped,
   categories,
   existing,
+  existingBudgets = [],
 }: {
   rows: ImportedRow[];
+  budgets?: ImportedBudget[];
   skipped: SkippedRow[];
   categories: Category[];
   existing: Transaction[];
+  existingBudgets?: Budget[];
 }): ImportPlan {
   const idByName = new Map<string, ID>();
   for (const category of categories) idByName.set(categoryKey(category.name), category.id);
@@ -485,7 +677,25 @@ export function planImport({
     return { row, transaction, duplicate: remaining > 0 };
   });
 
-  return { entries, newCategories, skipped };
+  const budgetEntries = budgets.map((row): BudgetImportEntry => {
+    const budget: NewBudget = {
+      categoryId: resolveCategory(row.categoryName),
+      startMonth: row.startMonth,
+      endMonth: row.endMonth,
+      limitMinor: row.limitMinor,
+    };
+    const stored = existingBudgets.find(
+      (b) => b.categoryId === budget.categoryId && sameScope(b, budget),
+    );
+    const status = !stored
+      ? "new"
+      : stored.limitMinor === budget.limitMinor
+        ? "same"
+        : "update";
+    return { row, budget, status };
+  });
+
+  return { entries, budgets: budgetEntries, newCategories, skipped };
 }
 
 /**
@@ -505,9 +715,18 @@ export function buildImportRequest(
     .filter((entry) => includeDuplicates || !entry.duplicate)
     .map((entry) => entry.transaction);
 
-  const used = new Set(transactions.map((tx) => tx.categoryId));
+  // Budgets already stored with this exact limit would be a no-op write.
+  const budgets = plan.budgets
+    .filter((entry) => entry.status !== "same")
+    .map((entry) => entry.budget);
+
+  const used = new Set([
+    ...transactions.map((tx) => tx.categoryId),
+    ...budgets.map((b) => b.categoryId),
+  ]);
   return {
     categories: plan.newCategories.filter((category) => used.has(category.id)),
     transactions,
+    budgets,
   };
 }

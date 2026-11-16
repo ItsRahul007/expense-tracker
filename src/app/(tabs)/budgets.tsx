@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import {
@@ -13,6 +13,7 @@ import {
   SectionTitle,
 } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
+import { scopeKind, scopeLabel } from "@/lib/budget-scope";
 import { formatMoney } from "@/lib/format";
 import { currentMonth, type Month } from "@/lib/month";
 import {
@@ -32,6 +33,11 @@ export default function BudgetsScreen() {
   const upsertBudget = useUpsertBudget();
   // Warm the neighbouring months so the switcher never flashes an empty state.
   usePrefetchAdjacentMonths(month, { budgets: true });
+
+  // Read by the tab bar's "+" so a new budget starts on the month on screen.
+  useEffect(() => {
+    router.setParams({ month });
+  }, [month]);
 
   const categoryById = useMemo(() => {
     const map = new Map<ID, Category>();
@@ -53,14 +59,16 @@ export default function BudgetsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="pb-4">
-          <MonthSwitcher month={month} onChange={setMonth} />
+          {/* Future months too: a budget can be set ahead for a date range or
+              every month, and has to be reachable here to be seen. */}
+          <MonthSwitcher month={month} onChange={setMonth} allowFuture />
         </View>
 
         {rows.length === 0 ? (
           <EmptyState
             icon="wallet-outline"
             title="No budgets set"
-            body="Budgets apply to a single month, so you can set a different limit whenever things change."
+            body="Set a limit for one month, every month, or a range of months. Tap + to add one."
           />
         ) : (
           <>
@@ -95,20 +103,28 @@ export default function BudgetsScreen() {
               <View className="gap-3">
                 {rows.map((budget) => (
                   <BudgetCard
-                    key={budget.categoryId}
+                    key={budget.id}
                     budget={budget}
                     category={categoryById.get(budget.categoryId)}
                     editing={editing === budget.categoryId}
                     onStartEdit={() => setEditing(budget.categoryId)}
                     onCancel={() => setEditing(null)}
                     onCommit={(limitMinor) => {
-                      upsertBudget.mutate({ ...budget, limitMinor });
+                      // Edits the budget in place, so a limit changed here
+                      // applies to every month that budget covers.
+                      upsertBudget.mutate({
+                        id: budget.id,
+                        categoryId: budget.categoryId,
+                        startMonth: budget.startMonth,
+                        endMonth: budget.endMonth,
+                        limitMinor,
+                      });
                       setEditing(null);
                     }}
                     onDelete={() =>
                       router.push({
                         pathname: "/delete-budget",
-                        params: { categoryId: budget.categoryId, month },
+                        params: { budgetId: budget.id, month },
                       })
                     }
                   />
@@ -239,6 +255,16 @@ function BudgetCard({
           <Text className="font-sans mt-0.5 text-label text-muted">
             {formatMoney(budget.spentMinor)} of {formatMoney(budget.limitMinor)}
           </Text>
+          <View className="mt-1 flex-row items-center gap-1">
+            <Ionicons
+              name={scopeKind(budget) === "month" ? "calendar-outline" : "repeat"}
+              size={12}
+              color={palette.muted}
+            />
+            <Text className="font-sans text-caption text-muted" numberOfLines={1}>
+              {scopeLabel(budget)}
+            </Text>
+          </View>
         </View>
         <Text
           className={`font-sans-semibold text-body ${over ? "text-danger" : "text-fg"}`}
@@ -272,7 +298,9 @@ function BudgetCard({
               onBlur={commit}
               keyboardType="number-pad"
               returnKeyType="done"
-              placeholder="New limit"
+              placeholder={
+                scopeKind(budget) === "month" ? "New limit" : "New limit for every month"
+              }
               placeholderTextColor={palette.muted}
               className="font-sans-medium h-11 flex-1 px-1 text-body text-fg"
               style={{ minWidth: 0 }}

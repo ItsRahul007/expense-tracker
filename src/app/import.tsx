@@ -13,17 +13,24 @@ import {
   SectionTitle,
 } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
+import { scopeLabel } from "@/lib/budget-scope";
 import {
   buildImportRequest,
   parseLedgerCsv,
   planImport,
   type ImportPlan,
+  type ImportedBudget,
   type ImportedRow,
   type SkippedRow,
 } from "@/lib/csv-import";
 import { formatMoney, formatRelativeDay } from "@/lib/format";
 import { monthLabel, monthOf } from "@/lib/month";
-import { useCategories, useImportTransactions, useTransactions } from "@/queries";
+import {
+  useAllBudgets,
+  useCategories,
+  useImportTransactions,
+  useTransactions,
+} from "@/queries";
 import type { NewTransaction } from "@/types/domain";
 
 /**
@@ -69,6 +76,9 @@ const MONTHS_NAMED = 3;
  *  the screen. The count above it always states the true total. */
 const SKIPPED_SHOWN = 6;
 
+/** Budgets listed individually in the preview before it summarises the rest. */
+const BUDGETS_SHOWN = 8;
+
 const MONO = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
 
 type Stage =
@@ -76,11 +86,19 @@ type Stage =
   | { kind: "reading" }
   /** The file couldn't be read or understood at all — nothing to preview. */
   | { kind: "failed"; message: string }
-  | { kind: "ready"; fileName: string; rows: ImportedRow[]; skipped: SkippedRow[] }
+  | {
+      kind: "ready";
+      fileName: string;
+      rows: ImportedRow[];
+      budgets: ImportedBudget[];
+      skipped: SkippedRow[];
+    }
   | { kind: "done"; summary: Summary };
 
 type Summary = {
   added: number;
+  budgetsAdded: number;
+  budgetsUpdated: number;
   categoriesCreated: number;
   duplicatesSkipped: number;
   unreadable: number;
@@ -91,6 +109,7 @@ export default function ImportScreen() {
   const palette = usePalette();
   const { data: categories } = useCategories();
   const { data: existing } = useTransactions(null);
+  const { data: existingBudgets } = useAllBudgets();
   const importTransactions = useImportTransactions();
 
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
@@ -105,15 +124,21 @@ export default function ImportScreen() {
     if (stage.kind !== "ready") return null;
     return planImport({
       rows: stage.rows,
+      budgets: stage.budgets,
       skipped: stage.skipped,
       categories: categories ?? [],
       existing: existing ?? [],
+      existingBudgets: existingBudgets ?? [],
     });
-  }, [stage, categories, existing]);
+  }, [stage, categories, existing, existingBudgets]);
 
   const duplicates = plan?.entries.filter((entry) => entry.duplicate).length ?? 0;
   const request = plan ? buildImportRequest(plan, includeDuplicates) : null;
   const importing = request?.transactions.length ?? 0;
+  const importingBudgets = request?.budgets.length ?? 0;
+  const nothingToImport = importing === 0 && importingBudgets === 0;
+  const budgetsUnchanged =
+    plan?.budgets.filter((entry) => entry.status === "same").length ?? 0;
 
   const pick = async () => {
     const result = await DocumentPicker.getDocumentAsync({
@@ -151,6 +176,7 @@ export default function ImportScreen() {
         kind: "ready",
         fileName: asset.name,
         rows: parsed.rows,
+        budgets: parsed.budgets,
         skipped: parsed.skipped,
       });
     } catch (error) {
@@ -165,7 +191,7 @@ export default function ImportScreen() {
   };
 
   const confirm = async () => {
-    if (!plan || !request || request.transactions.length === 0) return;
+    if (!plan || !request || nothingToImport) return;
 
     try {
       await importTransactions.mutateAsync(request);
@@ -180,6 +206,8 @@ export default function ImportScreen() {
       kind: "done",
       summary: {
         added: request.transactions.length,
+        budgetsAdded: plan.budgets.filter((entry) => entry.status === "new").length,
+        budgetsUpdated: plan.budgets.filter((entry) => entry.status === "update").length,
         categoriesCreated: request.categories.length,
         duplicatesSkipped: includeDuplicates ? 0 : duplicates,
         unreadable: plan.skipped.length,
@@ -243,7 +271,11 @@ export default function ImportScreen() {
                     {stage.fileName}
                   </Text>
                   <Text className="font-sans text-label text-muted">
-                    {countLabel(plan.entries.length + plan.skipped.length, "row", "rows")}{" "}
+                    {countLabel(
+                      plan.entries.length + plan.budgets.length + plan.skipped.length,
+                      "row",
+                      "rows",
+                    )}{" "}
                     read
                   </Text>
                 </View>
@@ -251,19 +283,21 @@ export default function ImportScreen() {
 
               <View className="mt-4 border-t border-border pt-4">
                 <Text className="font-sans-bold text-title text-fg">
-                  {importing === 0
+                  {nothingToImport
                     ? "Nothing to import"
-                    : `${countLabel(importing, "expense", "expenses")} ready`}
+                    : `${importLabel(importing, importingBudgets)} ready`}
                 </Text>
                 <Text className="font-sans mt-0.5 text-body text-muted">
                   {importing > 0 && request
                     ? `${formatMoney(totalOf(request.transactions))} · ${rangeLabel(request.transactions)}`
-                    : plan.entries.length > 0
+                    : importingBudgets > 0
+                      ? "No expenses in this file — budgets only."
+                      : plan.entries.length > 0 || plan.budgets.length > 0
                       // The likeliest way to land here by far: the same file
                       // imported a second time. Saying so beats "nothing could
                       // be read", which would be plainly untrue.
-                      ? "Every row in this file is already recorded."
-                      : "Nothing in this file could be read as an expense — the rows below say why."}
+                        ? "Every row in this file is already recorded."
+                        : "Nothing in this file could be read as an expense — the rows below say why."}
                 </Text>
               </View>
             </Card>
@@ -293,6 +327,63 @@ export default function ImportScreen() {
                 <Text className="font-sans mt-2 px-1 text-label text-muted">
                   These aren’t in your list yet, so importing creates them. Give them a
                   proper icon and colour afterwards on the Categories screen.
+                </Text>
+              </View>
+            ) : null}
+
+            {plan.budgets.length > 0 ? (
+              <View className="mt-6">
+                <SectionTitle title="Budgets" />
+                <Card padded={false} className="overflow-hidden">
+                  {plan.budgets.slice(0, BUDGETS_SHOWN).map((entry, index) => {
+                    const category =
+                      categories?.find((c) => c.id === entry.budget.categoryId) ??
+                      plan.newCategories.find((c) => c.id === entry.budget.categoryId);
+                    return (
+                      <View key={entry.row.row}>
+                        <View className="min-h-[52px] flex-row items-center gap-3 px-4 py-3">
+                          <IconBadge
+                            icon={category?.icon ?? "ellipsis-horizontal"}
+                            color={category?.color ?? "#6B7280"}
+                            size="sm"
+                          />
+                          <View className="flex-1">
+                            <Text className="font-sans-medium text-body text-fg">
+                              {category?.name ?? entry.row.categoryName}
+                            </Text>
+                            <Text className="font-sans text-label text-muted">
+                              {scopeLabel(entry.budget)}
+                            </Text>
+                          </View>
+                          <View className="items-end">
+                            <Text className="font-sans-semibold text-body text-fg">
+                              {formatMoney(entry.budget.limitMinor, { paise: false })}
+                            </Text>
+                            <Text className="font-sans text-caption text-muted">
+                              {entry.status === "new"
+                                ? "New"
+                                : entry.status === "update"
+                                  ? "Updates limit"
+                                  : "Already set"}
+                            </Text>
+                          </View>
+                        </View>
+                        {index < Math.min(plan.budgets.length, BUDGETS_SHOWN) - 1 ? (
+                          <View className="ml-[52px] h-px bg-border" />
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </Card>
+                <Text className="font-sans mt-2 px-1 text-label text-muted">
+                  {plan.budgets.length > BUDGETS_SHOWN
+                    ? `${plan.budgets.length - BUDGETS_SHOWN} more not shown. `
+                    : ""}
+                  A budget for the same category and months as one you already have
+                  replaces its limit
+                  {budgetsUnchanged > 0
+                    ? `; ${countLabel(budgetsUnchanged, "is", "are")} already set and left alone.`
+                    : "."}
                 </Text>
               </View>
             ) : null}
@@ -361,12 +452,12 @@ export default function ImportScreen() {
             <View className="mt-8 gap-3">
               <Button
                 label={
-                  importing === 0
+                  nothingToImport
                     ? "Nothing to import"
-                    : `Import ${countLabel(importing, "expense", "expenses")}`
+                    : `Import ${importLabel(importing, importingBudgets)}`
                 }
                 onPress={confirm}
-                disabled={importing === 0}
+                disabled={nothingToImport}
                 loading={importTransactions.isPending}
               />
               <Button
@@ -421,7 +512,9 @@ function FormatCard() {
       </View>
 
       <Text className="font-sans mt-3 text-label text-muted">
-        A file exported from this app goes straight back in. Dates can also be
+        A file exported from this app goes straight back in, budgets included —
+        they’re the second table, headed Budget Category, Monthly Limit, From and
+        To (empty To means every month). Dates can also be
         05/08/2026 or 5 Aug 2026, amounts can carry ₹ and commas, and a category
         that doesn’t exist yet will be created.
       </Text>
@@ -438,7 +531,15 @@ function FormatCard() {
  */
 function DoneCard({ summary, onClose }: { summary: Summary; onClose: () => void }) {
   const palette = usePalette();
-  const { added, categoriesCreated, duplicatesSkipped, unreadable, months } = summary;
+  const {
+    added,
+    budgetsAdded,
+    budgetsUpdated,
+    categoriesCreated,
+    duplicatesSkipped,
+    unreadable,
+    months,
+  } = summary;
 
   return (
     <>
@@ -447,7 +548,7 @@ function DoneCard({ summary, onClose }: { summary: Summary; onClose: () => void 
           <IconBadge icon="checkmark-circle-outline" color={palette.success} />
           <View className="flex-1">
             <Text className="font-sans-bold text-title text-fg">
-              {countLabel(added, "expense", "expenses")} imported
+              {importLabel(added, budgetsAdded + budgetsUpdated)} imported
             </Text>
             {months.length > 0 ? (
               <Text className="font-sans mt-0.5 text-body text-muted">
@@ -457,8 +558,22 @@ function DoneCard({ summary, onClose }: { summary: Summary; onClose: () => void 
           </View>
         </View>
 
-        {categoriesCreated > 0 || duplicatesSkipped > 0 || unreadable > 0 ? (
+        {budgetsAdded > 0 ||
+        budgetsUpdated > 0 ||
+        categoriesCreated > 0 ||
+        duplicatesSkipped > 0 ||
+        unreadable > 0 ? (
           <View className="mt-4 gap-1.5 border-t border-border pt-4">
+            {budgetsAdded > 0 ? (
+              <Text className="font-sans text-label text-muted">
+                {countLabel(budgetsAdded, "budget", "budgets")} added
+              </Text>
+            ) : null}
+            {budgetsUpdated > 0 ? (
+              <Text className="font-sans text-label text-muted">
+                {countLabel(budgetsUpdated, "budget", "budgets")} updated
+              </Text>
+            ) : null}
             {categoriesCreated > 0 ? (
               <Text className="font-sans text-label text-muted">
                 {countLabel(categoriesCreated, "category", "categories")} created
@@ -480,7 +595,9 @@ function DoneCard({ summary, onClose }: { summary: Summary; onClose: () => void 
       </Card>
 
       <Text className="font-sans mt-4 px-1 text-label text-muted">
-        {months.length > 1
+        {months.length === 0
+          ? "Open Budgets to see them."
+          : months.length > 1
           ? "Use the month switcher on Expenses to see each month."
           : "Open Expenses to see them."}
       </Text>
@@ -496,6 +613,14 @@ function DoneCard({ summary, onClose }: { summary: Summary; onClose: () => void 
 
 function countLabel(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/** "12 expenses", "3 budgets", or "12 expenses and 3 budgets". */
+function importLabel(expenses: number, budgets: number): string {
+  const parts = [];
+  if (expenses > 0 || budgets === 0) parts.push(countLabel(expenses, "expense", "expenses"));
+  if (budgets > 0) parts.push(countLabel(budgets, "budget", "budgets"));
+  return parts.join(" and ");
 }
 
 function totalOf(transactions: NewTransaction[]): number {
