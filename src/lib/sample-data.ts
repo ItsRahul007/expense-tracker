@@ -7,7 +7,8 @@
  * `0003_protect_default_categories.sql` guarantees still exist.
  */
 
-import type { NewTransaction } from "@/types/domain";
+import { monthOf, type Month } from "@/lib/month";
+import type { Budget, NewTransaction } from "@/types/domain";
 
 /** [categoryId, notes to pick from, min rupees, max rupees] */
 const TEMPLATES: [string, string[], number, number][] = [
@@ -78,6 +79,58 @@ export function generateSampleTransactions(
         occurredAt,
         note: pick(notes),
       });
+    }
+  }
+
+  return rows;
+}
+
+/** Categories that get sample budgets. Health and Other are left out on
+ *  purpose: real users rarely budget everything, and the screen should be
+ *  tried with partial coverage. */
+const BUDGETED = ["c-food", "c-groc", "c-trvl", "c-home", "c-shop", "c-entm"];
+
+/**
+ * Limit as a multiple of what the batch actually spent. Below 1 ends over
+ * budget, just above 1 lands in the "nearly there" zone, well above 1 is
+ * comfortably under — so every month shows each state the screen can render.
+ */
+const LIMIT_RATIOS = [0.8, 0.95, 1.05, 1.2, 1.5, 2];
+
+/**
+ * Budgets to go with `transactions` (normally the batch from
+ * `generateSampleTransactions`). Each limit is derived from what that batch
+ * spent in the category that month, times a random ratio from
+ * `LIMIT_RATIOS`, rounded to ₹100. Each category is skipped in roughly one
+ * month in six so months differ, and a category the batch spent nothing on
+ * still gets a small limit so "₹0 of ₹X" shows up too.
+ *
+ * Limits only reflect this batch — adding sample data several times stacks the
+ * spend but replaces the budgets, so repeated runs drift towards "over".
+ */
+export function generateSampleBudgets(
+  transactions: NewTransaction[],
+): Budget[] {
+  const spent = new Map<string, number>();
+  const months = new Set<Month>();
+
+  for (const t of transactions) {
+    const month = monthOf(t.occurredAt);
+    months.add(month);
+    const key = `${month}|${t.categoryId}`;
+    spent.set(key, (spent.get(key) ?? 0) + t.amountMinor);
+  }
+
+  const rows: Budget[] = [];
+  for (const month of months) {
+    for (const categoryId of BUDGETED) {
+      if (Math.random() < 1 / 6) continue;
+      const spentRupees = (spent.get(`${month}|${categoryId}`) ?? 0) / 100;
+      const limitRupees = Math.max(
+        500,
+        Math.round((spentRupees * pick(LIMIT_RATIOS)) / 100) * 100,
+      );
+      rows.push({ categoryId, month, limitMinor: limitRupees * 100 });
     }
   }
 

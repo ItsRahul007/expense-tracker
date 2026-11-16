@@ -542,6 +542,61 @@ export function useUpsertBudget(): MutationResult<Budget> {
   return toMutationResult(mutation);
 }
 
+/**
+ * Writes many budgets in one transaction, replacing the limit wherever a
+ * category already has a budget for that month. Unlike `useUpsertBudget`, a
+ * zero limit is not treated as a delete — this is for bulk loads (sample data),
+ * where every row is meant to exist.
+ */
+export function useUpsertBudgets(): MutationResult<Budget[]> {
+  const db = useDrizzle();
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (input: Budget[]) =>
+      db.transaction((tx) => {
+        for (const row of input) {
+          tx.insert(budget)
+            .values(row)
+            .onConflictDoUpdate({
+              target: [budget.categoryId, budget.month],
+              set: { limitMinor: row.limitMinor },
+            })
+            .run();
+        }
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budget"] }),
+  });
+
+  return toMutationResult(mutation);
+}
+
+/**
+ * Deletes every expense, every budget and every custom category, leaving the
+ * eight default categories (protected by a trigger, and assumed to exist by
+ * the rest of the app) and the user's settings. One transaction, so a failure
+ * leaves the data exactly as it was. Development tooling — not exposed in
+ * release builds.
+ */
+export function useClearAllData(): MutationResult<void> {
+  const db = useDrizzle();
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async () =>
+      db.transaction((tx) => {
+        // Budgets and transactions first: both reference categories.
+        tx.delete(budget).run();
+        tx.delete(transaction).run();
+        tx.delete(category).where(eq(category.isDefault, false)).run();
+      }),
+    // Everything cached is now wrong, so drop all of it rather than listing keys.
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+
+  return toMutationResult(mutation);
+}
+
 export function useUpsertCategory(): MutationResult<Category> {
   const db = useDrizzle();
   const queryClient = useQueryClient();
