@@ -12,7 +12,12 @@ import {
 } from "@/components/ui";
 import { formatMoney } from "@/lib/format";
 import { currentMonth, lastNMonths, monthShort, type Month } from "@/lib/month";
-import { useCategories, useMonthSummary, useMonthTrend } from "@/queries";
+import {
+  useCategories,
+  useMonthSummary,
+  useMonthTrend,
+  usePrefetchAdjacentMonths,
+} from "@/queries";
 import type { Category, ID } from "@/types/domain";
 
 const TREND_MONTHS = 6;
@@ -24,6 +29,11 @@ export default function StatsScreen() {
   const { data: summary } = useMonthSummary(month);
   const { data: trend } = useMonthTrend(months);
   const { data: categories } = useCategories();
+  // Warm the neighbouring months so the switcher never flashes an empty state.
+  usePrefetchAdjacentMonths(month, {
+    summary: true,
+    trendMonths: TREND_MONTHS,
+  });
 
   const categoryById = useMemo(() => {
     const map = new Map<ID, Category>();

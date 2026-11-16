@@ -42,7 +42,7 @@ import { openDatabaseSync } from "expo-sqlite";
 
 import { DATABASE_NAME } from "@/constants/common";
 import { formatCsvRow } from "@/lib/csv";
-import { Month, monthRange, shiftMonth } from "@/lib/month";
+import { lastNMonths, Month, monthRange, shiftMonth } from "@/lib/month";
 import { useEffect } from "react";
 import { useDrizzle } from "./helper";
 
@@ -242,10 +242,8 @@ export function useMonthSummary(month: Month): QueryResult<MonthSummary> {
   };
 }
 
-export function useMonthTrend(months: Month[]): QueryResult<MonthPoint[]> {
-  const db = useDrizzle();
-
-  const { data, isPending, error } = useQuery<MonthPoint[]>({
+function monthTrendQuery(db: Db, months: Month[]) {
+  return queryOptions<MonthPoint[]>({
     queryKey: ["monthTrend", months],
     queryFn: async () => {
       const monthPoints: MonthPoint[] = [];
@@ -290,6 +288,11 @@ export function useMonthTrend(months: Month[]): QueryResult<MonthPoint[]> {
       return monthPoints;
     },
   });
+}
+
+export function useMonthTrend(months: Month[]): QueryResult<MonthPoint[]> {
+  const db = useDrizzle();
+  const { data, isPending, error } = useQuery(monthTrendQuery(db, months));
 
   return {
     data,
@@ -351,17 +354,44 @@ export function useBudgets(month: Month): QueryResult<BudgetStatus[]> {
 }
 
 /**
+ * Which month-scoped queries `usePrefetchAdjacentMonths` should warm. Each
+ * screen passes only what it reads, so paging on Budgets doesn't also pay for
+ * transaction lists nobody is looking at.
+ *
+ * `trendMonths` warms the trend window ending at each neighbour — it must match
+ * the length the screen passes to `useMonthTrend`, or the key won't line up.
+ */
+export type AdjacentMonthPrefetch = {
+  transactions?: boolean;
+  summary?: boolean;
+  budgets?: boolean;
+  trendMonths?: number;
+};
+
+const HOME_PREFETCH: AdjacentMonthPrefetch = {
+  transactions: true,
+  summary: true,
+  budgets: true,
+};
+
+/**
  * Warms the cache for the months either side of `month`, so paging with the
  * month switcher lands on data that's already there instead of rendering one
- * empty frame of zeros while the new month's queries run. Covers everything a
- * month screen reads: transactions, summary and budgets.
+ * empty frame of zeros while the new month's queries run.
+ *
+ * Defaults to what the home screen reads (transactions, summary and budgets);
+ * other screens pass their own selection.
  *
  * The next month is skipped once it's in the future — the switcher can't go
  * there, so there's nothing to warm.
  */
-export function usePrefetchAdjacentMonths(month: Month): void {
+export function usePrefetchAdjacentMonths(
+  month: Month,
+  what: AdjacentMonthPrefetch = HOME_PREFETCH,
+): void {
   const db = useDrizzle();
   const queryClient = useQueryClient();
+  const { transactions, summary, budgets, trendMonths } = what;
 
   useEffect(() => {
     const neighbours = [shiftMonth(month, -1), shiftMonth(month, 1)].filter(
@@ -369,11 +399,16 @@ export function usePrefetchAdjacentMonths(month: Month): void {
     );
 
     for (const m of neighbours) {
-      queryClient.prefetchQuery(transactionsQuery(db, m));
-      queryClient.prefetchQuery(monthSummaryQuery(db, m));
-      queryClient.prefetchQuery(budgetsQuery(db, m));
+      if (transactions) queryClient.prefetchQuery(transactionsQuery(db, m));
+      if (summary) queryClient.prefetchQuery(monthSummaryQuery(db, m));
+      if (budgets) queryClient.prefetchQuery(budgetsQuery(db, m));
+      if (trendMonths) {
+        queryClient.prefetchQuery(
+          monthTrendQuery(db, lastNMonths(trendMonths, m)),
+        );
+      }
     }
-  }, [db, queryClient, month]);
+  }, [db, queryClient, month, transactions, summary, budgets, trendMonths]);
 }
 
 export function useTransaction(id: ID): QueryResult<Transaction | null> {
@@ -502,6 +537,61 @@ export function useUpsertBudget(): MutationResult<Budget> {
         .run();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budget"] }),
+  });
+
+  return toMutationResult(mutation);
+}
+
+/**
+ * Writes many budgets in one transaction, replacing the limit wherever a
+ * category already has a budget for that month. Unlike `useUpsertBudget`, a
+ * zero limit is not treated as a delete — this is for bulk loads (sample data),
+ * where every row is meant to exist.
+ */
+export function useUpsertBudgets(): MutationResult<Budget[]> {
+  const db = useDrizzle();
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (input: Budget[]) =>
+      db.transaction((tx) => {
+        for (const row of input) {
+          tx.insert(budget)
+            .values(row)
+            .onConflictDoUpdate({
+              target: [budget.categoryId, budget.month],
+              set: { limitMinor: row.limitMinor },
+            })
+            .run();
+        }
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budget"] }),
+  });
+
+  return toMutationResult(mutation);
+}
+
+/**
+ * Deletes every expense, every budget and every custom category, leaving the
+ * eight default categories (protected by a trigger, and assumed to exist by
+ * the rest of the app) and the user's settings. One transaction, so a failure
+ * leaves the data exactly as it was. Development tooling — not exposed in
+ * release builds.
+ */
+export function useClearAllData(): MutationResult<void> {
+  const db = useDrizzle();
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async () =>
+      db.transaction((tx) => {
+        // Budgets and transactions first: both reference categories.
+        tx.delete(budget).run();
+        tx.delete(transaction).run();
+        tx.delete(category).where(eq(category.isDefault, false)).run();
+      }),
+    // Everything cached is now wrong, so drop all of it rather than listing keys.
+    onSuccess: () => queryClient.invalidateQueries(),
   });
 
   return toMutationResult(mutation);

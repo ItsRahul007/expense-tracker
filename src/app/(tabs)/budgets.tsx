@@ -15,7 +15,12 @@ import {
 import { usePalette } from "@/constants/palette";
 import { formatMoney } from "@/lib/format";
 import { currentMonth, type Month } from "@/lib/month";
-import { useBudgets, useCategories, useUpsertBudget } from "@/queries";
+import {
+  useBudgets,
+  useCategories,
+  usePrefetchAdjacentMonths,
+  useUpsertBudget,
+} from "@/queries";
 import type { BudgetStatus, Category, ID } from "@/types/domain";
 
 export default function BudgetsScreen() {
@@ -25,6 +30,8 @@ export default function BudgetsScreen() {
   const { data: budgets } = useBudgets(month);
   const { data: categories } = useCategories();
   const upsertBudget = useUpsertBudget();
+  // Warm the neighbouring months so the switcher never flashes an empty state.
+  usePrefetchAdjacentMonths(month, { budgets: true });
 
   const categoryById = useMemo(() => {
     const map = new Map<ID, Category>();
