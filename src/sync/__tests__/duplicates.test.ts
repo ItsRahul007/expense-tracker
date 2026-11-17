@@ -6,7 +6,7 @@ import { FakeGoogle } from "@/test-utils/fake-google";
 import { createTestDb } from "@/test-utils/sqlite";
 
 import { nextStamp } from "../clock";
-import { keepBoth, mergePair, undoMerge } from "../duplicates";
+import { keepBoth, mergedInto, mergePair, undoMerge } from "../duplicates";
 import { createSyncEngine } from "../engine";
 import { readLocal } from "../local-repo";
 import { newTransactionStamp, resetDeviceIdForTests } from "../tracking";
@@ -111,5 +111,15 @@ describe("suggestion actions", () => {
       expect.objectContaining({ id: "early", note: "b", syncDirty: true }),
     ]);
     expect(db.select().from(tombstone).get()).toMatchObject({ id: "late", reason: "duplicate", mergedInto: "early" });
+  });
+});
+
+describe("mergedInto", () => {
+  it("follows duplicate tombstones to the surviving expense", () => {
+    const { db } = createTestDb();
+    const t = (id: string, into: string) => ({ entity: "transaction" as const, id, deletedAt: 1, reason: "duplicate" as const, mergedInto: into, device: "d" });
+    db.insert(tombstone).values([t("a", "b"), t("b", "c")]).run();
+    expect(mergedInto(db, "a")).toBe("c");
+    expect(mergedInto(db, "c")).toBeNull();
   });
 });

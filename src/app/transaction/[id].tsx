@@ -1,4 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
+
+import { useDrizzle } from "@/queries/helper";
+import { mergedInto } from "@/sync/duplicates";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
 
@@ -43,6 +46,15 @@ export default function TransactionScreen() {
   const [occurredAt, setOccurredAt] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
+
+  // Merged away as a duplicate by a sync while open? Move to the copy that
+  // was kept rather than leaving an empty screen (design §12.9).
+  const db = useDrizzle();
+  useEffect(() => {
+    if (isPending || transaction) return;
+    const survivor = mergedInto(db, id);
+    if (survivor) router.replace(`/transaction/${survivor}`);
+  }, [db, id, isPending, transaction]);
 
   // Seed the editable copy once the record arrives, then leave it alone so a
   // refetch can't overwrite what's being typed.

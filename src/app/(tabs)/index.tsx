@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { FlatList, View } from "react-native";
 
 import { SummaryCard } from "@/components/summary-card";
+import { SyncNotices } from "@/components/sync-notices";
 import {
   Card,
   EmptyState,
@@ -99,6 +100,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View className={isEmpty ? "" : "mb-6"}>
+            <SyncNotices />
             <View className="pb-4">
               <MonthSwitcher month={month} onChange={setMonth} earliest={knownMonths?.[0]} />
             </View>

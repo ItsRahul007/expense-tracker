@@ -93,3 +93,22 @@ export function mergePair(db: Store, a: TransactionRecord, b: TransactionRecord,
     recordDeletions(tx, "transaction", [duplicate.id], { reason: "duplicate", mergedInto: survivor.id });
   });
 }
+
+/**
+ * Where an expense went if it was merged away as a duplicate — following
+ * chains (a → b → c) a few hops. `null` if it wasn't merged (deleted, or never
+ * existed). Lets an open detail screen move to the surviving copy (§12.9 A).
+ */
+export function mergedInto(db: Pick<Db, "select">, id: ID): ID | null {
+  let current = id;
+  for (let hop = 0; hop < 5; hop++) {
+    const tomb = db
+      .select({ mergedInto: tombstone.mergedInto, reason: tombstone.reason })
+      .from(tombstone)
+      .where(and(eq(tombstone.entity, "transaction"), eq(tombstone.id, current)))
+      .get();
+    if (!tomb || tomb.reason !== "duplicate" || !tomb.mergedInto) break;
+    current = tomb.mergedInto;
+  }
+  return current === id ? null : current;
+}
