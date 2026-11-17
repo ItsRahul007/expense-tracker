@@ -7,7 +7,7 @@ import {
   type TokenProvider,
 } from "../google-api";
 import { TAB } from "../sheet-format";
-import { structureRequests, TAB_ORDER } from "../sheet-setup";
+import { growRequests, structureRequests, TAB_ORDER } from "../sheet-setup";
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -202,5 +202,18 @@ describe("structureRequests", () => {
 
   it("does nothing when the layout is complete", () => {
     expect(structureRequests(TAB_ORDER.map((title, i) => ({ sheetId: i, title })))).toEqual([]);
+  });
+});
+
+describe("growRequests", () => {
+  it("adds rows (with headroom) only where the write won't fit", () => {
+    const sheets = [
+      { sheetId: 1, title: "Expenses", gridProperties: { rowCount: 1000 } },
+      { sheetId: 2, title: "Budgets", gridProperties: { rowCount: 1000 } },
+    ];
+    expect(growRequests(sheets, { Expenses: 1_201, Budgets: 10 })).toEqual([
+      { appendDimension: { sheetId: 1, dimension: "ROWS", length: 1_201 } },
+    ]);
+    expect(growRequests(sheets, { Expenses: 1_000 })).toEqual([]);
   });
 });

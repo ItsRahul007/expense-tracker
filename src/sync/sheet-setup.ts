@@ -179,3 +179,32 @@ export function structureRequests(existing: SheetProperties[]): object[] {
 
   return requests;
 }
+
+/** A new tab's grid is this many rows; writing past it is an API error. */
+export const DEFAULT_GRID_ROWS = 1000;
+/** Extra rows added when a tab grows, so it doesn't have to grow every sync. */
+export const GROW_HEADROOM_ROWS = 1000;
+
+/**
+ * Requests that make each tab's grid tall enough for the rows about to be
+ * written. The Sheets API rejects writes past the last row ("exceeds grid
+ * limits") rather than resizing, so without this a ledger stops syncing at
+ * about a thousand expenses.
+ */
+export function growRequests(existing: SheetProperties[], neededRows: Partial<Record<string, number>>): object[] {
+  const requests: object[] = [];
+  for (const sheet of existing) {
+    const needed = neededRows[sheet.title];
+    if (needed === undefined) continue;
+    const current = sheet.gridProperties?.rowCount ?? DEFAULT_GRID_ROWS;
+    if (needed <= current) continue;
+    requests.push({
+      appendDimension: {
+        sheetId: sheet.sheetId,
+        dimension: "ROWS",
+        length: needed - current + GROW_HEADROOM_ROWS,
+      },
+    });
+  }
+  return requests;
+}

@@ -16,7 +16,7 @@ import type { Cell, Grid, TabName } from "@/sync/sheet-format";
 
 type Spreadsheet = {
   file: DriveFile & { tagged: boolean };
-  tabs: Map<string, { sheetId: number; grid: Grid }>;
+  tabs: Map<string, { sheetId: number; grid: Grid; rowCount: number }>;
   version: number;
 };
 
@@ -91,7 +91,8 @@ export class FakeGoogle {
       const id = `sheet-${this.nextId++}`;
       const s: Spreadsheet = {
         file: { id, name, version: "1", tagged: true },
-        tabs: new Map([["Sheet1", { sheetId: 0, grid: [] }]]),
+        // Real new spreadsheets start with a 1,000-row grid.
+        tabs: new Map([["Sheet1", { sheetId: 0, grid: [], rowCount: 1000 }]]),
         version: 1,
       };
       this.files.set(id, s);
@@ -102,7 +103,9 @@ export class FakeGoogle {
   sheets: SheetsClient = {
     tabs: async (id) => {
       this.check();
-      return [...this.sheet(id).tabs.entries()].map(([title, t]): SheetProperties => ({ sheetId: t.sheetId, title }));
+      return [...this.sheet(id).tabs.entries()].map(
+        ([title, t]): SheetProperties => ({ sheetId: t.sheetId, title, gridProperties: { rowCount: t.rowCount } }),
+      );
     },
     readTabs: async (id, titles) => {
       this.check();
@@ -128,6 +131,14 @@ export class FakeGoogle {
         const tab = s.tabs.get(title);
         if (!tab) throw new SyncHttpError("bad_request", `Unable to parse range: ${range}`, 400);
         const start = Number(match[2]) - 1;
+        // Like the real API: writing past the grid is an error, not a resize.
+        if (start + values.length > tab.rowCount) {
+          throw new SyncHttpError(
+            "bad_request",
+            `Range (${title}!A${start + values.length}) exceeds grid limits. Max rows: ${tab.rowCount}`,
+            400,
+          );
+        }
         values.forEach((row, i) => {
           const target = (tab.grid[start + i] ??= []);
           row.forEach((cell: Cell, j) => {
@@ -141,10 +152,16 @@ export class FakeGoogle {
       this.check();
       this.calls.writes++;
       const s = this.sheet(id);
-      for (const request of requests as Record<string, { properties?: SheetProperties }>[]) {
+      type Req = Record<string, { properties?: SheetProperties; sheetId?: number; dimension?: string; length?: number }>;
+      for (const request of requests as Req[]) {
         if (request.addSheet?.properties) {
-          const { title, sheetId } = request.addSheet.properties;
-          s.tabs.set(title, { sheetId, grid: [] });
+          const { title, sheetId, gridProperties } = request.addSheet.properties;
+          s.tabs.set(title, { sheetId, grid: [], rowCount: gridProperties?.rowCount ?? 1000 });
+        }
+        if (request.appendDimension?.dimension === "ROWS") {
+          const { sheetId, length } = request.appendDimension;
+          const tab = [...s.tabs.values()].find((t) => t.sheetId === sheetId);
+          if (tab) tab.rowCount += length ?? 0;
         }
         if (request.updateSheetProperties?.properties) {
           const { sheetId, title } = request.updateSheetProperties.properties;

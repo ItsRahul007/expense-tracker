@@ -185,11 +185,18 @@ const SHEETS = "https://sheets.googleapis.com/v4/spreadsheets";
 
 export const a1 = (tab: string, cell = "A1") => `'${tab.replace(/'/g, "''")}'!${cell}`;
 
-export type SheetProperties = { sheetId: number; title: string; hidden?: boolean };
+export type SheetProperties = {
+  sheetId: number;
+  title: string;
+  hidden?: boolean;
+  gridProperties?: { rowCount?: number; columnCount?: number };
+};
 
 export function createSheetsClient(http: Http) {
   async function tabs(spreadsheetId: string): Promise<SheetProperties[]> {
-    const params = new URLSearchParams({ fields: "sheets.properties(sheetId,title,hidden)" });
+    const params = new URLSearchParams({
+      fields: "sheets.properties(sheetId,title,hidden,gridProperties(rowCount,columnCount))",
+    });
     const result = await http<{ sheets?: { properties: SheetProperties }[] }>(
       `${SHEETS}/${encodeURIComponent(spreadsheetId)}?${params}`,
     );

@@ -29,7 +29,7 @@ import {
   type TabName,
   uniqueQuarantine,
 } from "./sheet-format";
-import { structureRequests } from "./sheet-setup";
+import { DEFAULT_GRID_ROWS, growRequests, structureRequests } from "./sheet-setup";
 import {
   getState,
   isDedupeEnabled,
@@ -169,12 +169,21 @@ export function createSyncEngine(deps: EngineDeps) {
     });
 
     const writes: { range: string; values: Grid }[] = [];
+    const neededRows: Partial<Record<TabName, number>> = {};
     for (const [tab, grid] of Object.entries(grids) as [TabName, Grid][]) {
       const padded = padGrid(grid, previousRows[tab] ?? 0);
+      neededRows[tab] = padded.length;
       for (let start = 0; start < padded.length; start += WRITE_CHUNK_ROWS) {
         writes.push({ range: a1(tab, `A${start + 1}`), values: padded.slice(start, start + WRITE_CHUNK_ROWS) });
       }
     }
+
+    // Tabs start with a 1,000-row grid and the API won't write past it. Only
+    // look up the real sizes once something might not fit.
+    if (Math.max(0, ...Object.values(neededRows).map((n) => n ?? 0)) > DEFAULT_GRID_ROWS) {
+      await sheets.batchUpdate(spreadsheetId, growRequests(await sheets.tabs(spreadsheetId), neededRows));
+    }
+
     await sheets.writeRanges(spreadsheetId, writes);
 
     // Mirror the stamp locally without touching the version or dirty flag —

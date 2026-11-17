@@ -404,3 +404,22 @@ describe("upgrading an existing install", () => {
     expect(other.expenses()).toHaveLength(151);
   });
 });
+
+describe("large ledgers", () => {
+  it("grows the sheet past its 1,000-row grid instead of failing", async () => {
+    const a = makeDevice(google, "d-a");
+    await connectAll(a);
+    const day = new Date(2026, 10, 14, 12).getTime();
+    for (let i = 0; i < 1_200; i++) a.add({ amountMinor: 100 + i, occurredAt: day - i * 3_600_000 });
+
+    const outcome = await a.sync();
+    expect(outcome.status).toBe("synced");
+    expect(countUnsynced(a.db)).toBe(0);
+    expect(google.grid(getState(a.db, "spreadsheet_id")!, TAB.expenses)).toHaveLength(1_201);
+
+    // And a reinstall gets all of them back.
+    const b = makeDevice(google, "d-b");
+    await connectAll(b);
+    expect(b.expenses()).toHaveLength(1_200);
+  });
+});
