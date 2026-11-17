@@ -5,7 +5,7 @@
  */
 import { rowHistory, syncState, tombstone, transaction } from "@/db/schema/schema";
 import { FakeGoogle } from "@/test-utils/fake-google";
-import { createTestDb } from "@/test-utils/sqlite";
+import { applyMigration, createTestDb } from "@/test-utils/sqlite";
 import { eq } from "drizzle-orm";
 
 import { nextStamp } from "../clock";
@@ -367,5 +367,40 @@ describe("convergence under random interleavings", () => {
         expect(ids.has(h.id) || tombs.has(h.id)).toBe(true);
       }
     }
+  });
+});
+
+describe("upgrading an existing install", () => {
+  it("uploads 150 pre-sync expenses on first sign-in, merging with what the sheet has", async () => {
+    // The preview app today: data from before migration 0005, no sync yet.
+    const { raw, db } = createTestDb({ upTo: "0005_sync_tracking" });
+    const insert = raw.prepare(
+      "INSERT INTO transactions (id, amount_minor, category_id, occurred_at, note) VALUES (?, ?, ?, ?, ?)",
+    );
+    const day = new Date(2026, 10, 14, 12).getTime();
+    // Many identical-looking rows (same amount, category and day) on purpose:
+    // legacy rows must never be treated as duplicates of each other.
+    for (let i = 0; i < 150; i++) insert.run(`t-old-${i}`, 25_000, "c-food", day, null);
+    applyMigration(raw, "0005_sync_tracking");
+    db.insert(syncState).values({ key: "device_id", value: "d-preview" }).run();
+
+    // The account already has a sheet with one expense from another phone.
+    const other = makeDevice(google, "d-other");
+    other.add({ note: "already in the sheet" });
+    await connectAll(other);
+
+    resetDeviceIdForTests();
+    const engine = createSyncEngine({ db, drive: google.drive, sheets: google.sheets, appVersion: "t" });
+    const { outcome, created } = await engine.connect();
+
+    expect(created).toBe(false);
+    expect(outcome.status).toBe("synced");
+    expect(db.select().from(transaction).all()).toHaveLength(151);
+    expect(countUnsynced(db)).toBe(0);
+    const sheet = google.grid(getState(db, "spreadsheet_id")!, TAB.expenses);
+    expect(sheet).toHaveLength(152); // header + 151
+
+    await other.sync();
+    expect(other.expenses()).toHaveLength(151);
   });
 });
