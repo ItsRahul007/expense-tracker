@@ -33,6 +33,7 @@ export type SyncStateValues = {
   device_id: string;
   /** Whose data this database holds — survives sign-out (design §7.7). */
   owner_user_id: string;
+  owner_email: string;
   session_user_id: string;
   session_email: string;
   session_name: string;
