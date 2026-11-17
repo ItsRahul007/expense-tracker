@@ -3,7 +3,7 @@ import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { useKeyboardHeight } from "@/hooks/use-keyboard-height";
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
 import { Button, Card, Chip, MonthSwitcher } from "@/components/ui";
@@ -61,7 +61,7 @@ export default function AddBudgetScreen() {
     } as never);
   }, [navigation, creatingCategory]);
 
-  const keyboardHeight = useKeyboardHeight();
+  const keyboard = useKeyboardInset();
   const categoryId = chosenCategory ?? categories?.[0]?.id ?? null;
   const limitMinor = Number(draft.replace(/\D/g, "")) * 100;
   const canSave = categoryId !== null && limitMinor > 0;
@@ -87,122 +87,131 @@ export default function AddBudgetScreen() {
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <Card className="py-5">
-          <Text className="font-sans-medium text-label text-muted">
-            Monthly limit
+      <View ref={keyboard.ref} onLayout={keyboard.onLayout} className="flex-1">
+        <ScrollView
+          // Android: lets the sheet hand the drag to the ScrollView first, so
+          // swiping down scrolls back up instead of dragging the sheet closed.
+          nestedScrollEnabled
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Card className="py-5">
+            <Text className="font-sans-medium text-label text-muted">
+              Monthly limit
+            </Text>
+            <View className="mt-1 flex-row items-center">
+              <Text className="font-sans-bold text-display text-muted">₹</Text>
+              <TextInput
+                autoFocus
+                value={draft}
+                onChangeText={(next) => setDraft(next.replace(/\D/g, ""))}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={palette.muted}
+                textAlign="right"
+                className="font-sans-bold ml-2 flex-1 text-display text-fg"
+                style={{ paddingVertical: 0, minWidth: 0 }}
+                accessibilityLabel="Monthly limit in rupees"
+              />
+            </View>
+          </Card>
+
+          <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+            Applies to
           </Text>
-          <View className="mt-1 flex-row items-center">
-            <Text className="font-sans-bold text-display text-muted">₹</Text>
-            <TextInput
+          <View className="flex-row flex-wrap gap-2">
+            {SCOPE_OPTIONS.map((option) => (
+              <Chip
+                key={option.kind}
+                label={option.label}
+                selected={kind === option.kind}
+                onPress={() => setKind(option.kind)}
+              />
+            ))}
+          </View>
+
+          {kind === "range" ? (
+            <View className="mt-3 gap-2">
+              <View className="flex-row items-center gap-3">
+                <Text className="font-sans-medium w-10 text-label text-muted">
+                  From
+                </Text>
+                <View className="flex-1">
+                  <MonthSwitcher
+                    month={rangeFrom}
+                    allowFuture
+                    onChange={(next) => {
+                      setRangeFrom(next);
+                      // Drag the end along rather than allow a backwards range.
+                      if (next > rangeTo) setRangeTo(next);
+                    }}
+                  />
+                </View>
+              </View>
+              <View className="flex-row items-center gap-3">
+                <Text className="font-sans-medium w-10 text-label text-muted">
+                  To
+                </Text>
+                <View className="flex-1">
+                  <MonthSwitcher
+                    month={rangeTo}
+                    earliest={rangeFrom}
+                    allowFuture
+                    onChange={setRangeTo}
+                  />
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          <Text className="font-sans mt-2 px-1 text-label text-muted">
+            {kind === "month"
+              ? `Only ${monthLabel(month)}.`
+              : kind === "ongoing"
+                ? `${monthLabel(month)} and every month after, until you change it.`
+                : `${scopeLabel(scope)}, the same limit each month.`}{" "}
+            Where budgets overlap, the one you saved last applies.
+          </Text>
+
+          <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+            Category
+          </Text>
+
+          {creatingCategory ? (
+            <CategoryEditor
               autoFocus
-              value={draft}
-              onChangeText={(next) => setDraft(next.replace(/\D/g, ""))}
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor={palette.muted}
-              textAlign="right"
-              className="font-sans-bold ml-2 flex-1 text-display text-fg"
-              style={{ paddingVertical: 0, minWidth: 0 }}
-              accessibilityLabel="Monthly limit in rupees"
+              onCancel={() => setCreatingCategory(false)}
+              onCreated={(newId) => {
+                setChosenCategory(newId);
+                setCreatingCategory(false);
+              }}
+            />
+          ) : (
+            // Same dashed "New" tile as the add-expense sheet: realising a
+            // category is missing shouldn't mean abandoning this form. Picking a
+            // category that already has a budget for exactly these months just
+            // updates its limit.
+            <CategoryPicker
+              categories={categories ?? []}
+              selectedId={categoryId}
+              onSelect={setChosenCategory}
+              onAddNew={() => setCreatingCategory(true)}
+            />
+          )}
+
+          <View className="mt-8">
+            <Button
+              label={`Save ${limitMinor > 0 ? formatMoney(limitMinor) : "budget"}`}
+              onPress={save}
+              disabled={!canSave}
+              loading={upsertBudget.isPending}
             />
           </View>
-        </Card>
-
-        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
-          Applies to
-        </Text>
-        <View className="flex-row flex-wrap gap-2">
-          {SCOPE_OPTIONS.map((option) => (
-            <Chip
-              key={option.kind}
-              label={option.label}
-              selected={kind === option.kind}
-              onPress={() => setKind(option.kind)}
-            />
-          ))}
-        </View>
-
-        {kind === "range" ? (
-          <View className="mt-3 gap-2">
-            <View className="flex-row items-center gap-3">
-              <Text className="font-sans-medium w-10 text-label text-muted">From</Text>
-              <View className="flex-1">
-                <MonthSwitcher
-                  month={rangeFrom}
-                  allowFuture
-                  onChange={(next) => {
-                    setRangeFrom(next);
-                    // Drag the end along rather than allow a backwards range.
-                    if (next > rangeTo) setRangeTo(next);
-                  }}
-                />
-              </View>
-            </View>
-            <View className="flex-row items-center gap-3">
-              <Text className="font-sans-medium w-10 text-label text-muted">To</Text>
-              <View className="flex-1">
-                <MonthSwitcher
-                  month={rangeTo}
-                  earliest={rangeFrom}
-                  allowFuture
-                  onChange={setRangeTo}
-                />
-              </View>
-            </View>
-          </View>
-        ) : null}
-
-        <Text className="font-sans mt-2 px-1 text-label text-muted">
-          {kind === "month"
-            ? `Only ${monthLabel(month)}.`
-            : kind === "ongoing"
-              ? `${monthLabel(month)} and every month after, until you change it.`
-              : `${scopeLabel(scope)}, the same limit each month.`}{" "}
-          Where budgets overlap, the one you saved last applies.
-        </Text>
-
-        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
-          Category
-        </Text>
-
-        {creatingCategory ? (
-          <CategoryEditor
-            autoFocus
-            onCancel={() => setCreatingCategory(false)}
-            onCreated={(newId) => {
-              setChosenCategory(newId);
-              setCreatingCategory(false);
-            }}
-          />
-        ) : (
-          // Same dashed "New" tile as the add-expense sheet: realising a
-          // category is missing shouldn't mean abandoning this form. Picking a
-          // category that already has a budget for exactly these months just
-          // updates its limit.
-          <CategoryPicker
-            categories={categories ?? []}
-            selectedId={categoryId}
-            onSelect={setChosenCategory}
-            onAddNew={() => setCreatingCategory(true)}
-          />
-        )}
-
-        <View className="mt-8">
-          <Button
-            label={`Save ${limitMinor > 0 ? formatMoney(limitMinor) : "budget"}`}
-            onPress={save}
-            disabled={!canSave}
-            loading={upsertBudget.isPending}
-          />
-        </View>
-        {/* Room to scroll the Save button above the keyboard (see the hook). */}
-        <View style={{ height: keyboardHeight }} />
-      </ScrollView>
+          {/* Room to scroll the Save button above the keyboard (see the hook). */}
+          <View style={{ height: keyboard.inset }} />
+        </ScrollView>
+      </View>
     </View>
   );
 }
