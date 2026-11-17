@@ -1,9 +1,28 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
+
+/*
+ * Sync bookkeeping (see docs/design/2026-11-16-google-sheets-sync.md §9).
+ *
+ * Every syncable table carries `updated_at` (epoch ms, from `nextStamp()` in
+ * src/sync/clock.ts — the version two copies of a row are compared by) and
+ * `sync_dirty` (1 = changed locally and not yet seen in the Google Sheet).
+ * All of it is storage-only, like `isDefault`: none of it appears in
+ * src/types/domain.ts and the UI never reads it.
+ *
+ * Every live.ts write stamps these. A row written *by the sync engine* carries
+ * the remote `updated_at` and `sync_dirty = 0` instead, so it isn't echoed back.
+ */
+const syncColumns = {
+  updatedAt: integer("updated_at").notNull().default(0),
+  syncDirty: integer("sync_dirty", { mode: "boolean" }).notNull().default(true),
+};
 
 /**
  * `isDefault` exists for exactly one purpose: a trigger (see
@@ -24,6 +43,9 @@ const category = sqliteTable("categories", {
   isDefault: integer("is_default", { mode: "boolean" })
     .notNull()
     .default(false),
+  // Seeded defaults keep updated_at = 0 until edited: identical on every
+  // device, so they never conflict, and any real edit beats them.
+  ...syncColumns,
 });
 
 const transaction = sqliteTable(
@@ -41,10 +63,29 @@ const transaction = sqliteTable(
       .notNull(),
     occurredAt: integer("occurred_at").notNull(),
     note: text("note"),
+    // When the row was *entered*, and on which install — never changed by an
+    // edit. `occurredAt` is midday of the chosen day (src/app/add.tsx), so it
+    // can't tell two entries minutes apart; these can, and they're what
+    // cross-device duplicate detection compares (design §12). Rows that
+    // predate sync are 'legacy' and are never treated as duplicates.
+    createdAt: integer("created_at").notNull().default(0),
+    createdDevice: text("created_device").notNull().default("legacy"),
+    // When a pull first saw this row in the sheet (null = never uploaded yet).
+    // Lets the dedupe pass tell "one phone was offline" apart (design §12.9).
+    firstSyncedAt: integer("first_synced_at"),
+    ...syncColumns,
   },
   (table) => [
     index("transactions_occurred_at_idx").on(table.occurredAt),
     index("transactions_category_id_idx").on(table.categoryId),
+    index("transactions_dup_idx").on(
+      table.categoryId,
+      table.amountMinor,
+      table.occurredAt,
+    ),
+    index("transactions_sync_dirty_idx")
+      .on(table.syncDirty)
+      .where(sql`${table.syncDirty} = 1`),
   ],
 );
 
@@ -69,6 +110,7 @@ const budget = sqliteTable(
     endMonth: text("end_month"),
     limitMinor: integer("limit_minor").notNull(),
     createdAt: integer("created_at").notNull(),
+    ...syncColumns,
   },
   (table) => [index("budgets_category_id_idx").on(table.categoryId)],
 );
@@ -79,4 +121,79 @@ const settings = sqliteTable("settings", {
   ),
 });
 
-export { budget, category, settings, transaction };
+/**
+ * A record that a row was deleted, so the deletion can reach other devices.
+ * The row itself is still hard-deleted — keeping deletes out of the live
+ * tables means no read query in live.ts needs a "not deleted" filter.
+ */
+const tombstone = sqliteTable(
+  "tombstones",
+  {
+    entity: text("entity", {
+      enum: ["transaction", "category", "budget"],
+    }).notNull(),
+    id: text("id").notNull(),
+    deletedAt: integer("deleted_at").notNull(),
+    reason: text("reason", { enum: ["user", "duplicate"] }).notNull(),
+    /** The surviving row's id when `reason` is 'duplicate'. */
+    mergedInto: text("merged_into"),
+    device: text("device").notNull(),
+    syncDirty: integer("sync_dirty", { mode: "boolean" })
+      .notNull()
+      .default(true),
+  },
+  (table) => [primaryKey({ columns: [table.entity, table.id] })],
+);
+
+/**
+ * Every row version the sync engine overwrote or removed on this device, kept
+ * so nothing local is ever unrecoverable (design §3, P3). Local only — never
+ * synced. `row_json` is the full row as it was before the change.
+ */
+const rowHistory = sqliteTable("row_history", {
+  seq: integer("seq").primaryKey({ autoIncrement: true }),
+  entity: text("entity").notNull(),
+  id: text("id").notNull(),
+  rowJson: text("row_json").notNull(),
+  cause: text("cause", {
+    enum: ["remote_newer", "remote_delete", "duplicate"],
+  }).notNull(),
+  at: integer("at").notNull(),
+});
+
+/**
+ * Expense pairs the user said are *not* duplicates. Synced, so no device
+ * suggests or merges the pair again. Stored with `idA < idB`.
+ */
+const dedupeException = sqliteTable(
+  "dedupe_exceptions",
+  {
+    idA: text("id_a").notNull(),
+    idB: text("id_b").notNull(),
+    at: integer("at").notNull(),
+    syncDirty: integer("sync_dirty", { mode: "boolean" })
+      .notNull()
+      .default(true),
+  },
+  (table) => [primaryKey({ columns: [table.idA, table.idB] })],
+);
+
+/**
+ * Key/value store for this install's identity, the signed-in session, and
+ * sync bookkeeping. Keys are listed in `SyncStateKey` (src/sync/state.ts).
+ */
+const syncState = sqliteTable("sync_state", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+});
+
+export {
+  budget,
+  category,
+  dedupeException,
+  rowHistory,
+  settings,
+  syncState,
+  tombstone,
+  transaction,
+};

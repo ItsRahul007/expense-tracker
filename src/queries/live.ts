@@ -48,18 +48,48 @@ import { DATABASE_NAME } from "@/constants/common";
 import { effectiveBudgets, withoutMonth } from "@/lib/budget-scope";
 import { formatCsvRow } from "@/lib/csv";
 import { lastNMonths, Month, monthRange, shiftMonth } from "@/lib/month";
+import { notifyLocalChange } from "@/sync/local-changes";
+import {
+  editStamp,
+  newTransactionStamp,
+  recordDeletions,
+} from "@/sync/tracking";
 import { useEffect } from "react";
-import { useDrizzle } from "./helper";
+import { type Db, useDrizzle } from "./helper";
 
 const DEFAULT_SETTINGS: Settings = { theme: "system" };
 
 /**
- * Rows per `INSERT` when importing. Four columns each, so 200 rows is 800 bound
- * parameters — comfortably inside SQLite's limit with room for it to be the
- * lower, older one, while still turning a thousand-row file into five
- * statements rather than a thousand.
+ * Rows per `INSERT` when importing. Nine bound columns each (the five domain
+ * fields plus the four sync stamps — see `newTransactionStamp`), so 100 rows is
+ * 900 bound parameters — inside SQLite's limit even if it's the lower, older
+ * one (999), while still turning a thousand-row file into ten statements
+ * rather than a thousand.
  */
-const IMPORT_CHUNK_ROWS = 200;
+const IMPORT_CHUNK_ROWS = 100;
+
+/*
+ * Explicit column lists for reads that hand whole rows to the UI. A bare
+ * `select()` would also return the sync bookkeeping columns (`updated_at`,
+ * `sync_dirty`, …), which are storage-only and deliberately absent from
+ * src/types/domain.ts.
+ */
+const TRANSACTION_COLUMNS = {
+  id: transaction.id,
+  amountMinor: transaction.amountMinor,
+  categoryId: transaction.categoryId,
+  occurredAt: transaction.occurredAt,
+  note: transaction.note,
+};
+
+const BUDGET_COLUMNS = {
+  id: budget.id,
+  categoryId: budget.categoryId,
+  startMonth: budget.startMonth,
+  endMonth: budget.endMonth,
+  limitMinor: budget.limitMinor,
+  createdAt: budget.createdAt,
+};
 
 function newTransactionId(): ID {
   return `t-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -132,7 +162,6 @@ export function useCategories(): QueryResult<Category[]> {
   return { data, isPending, error };
 }
 
-type Db = ReturnType<typeof useDrizzle>;
 
 /*
  * Month-scoped queries are defined once as option factories so the hooks and
@@ -193,7 +222,7 @@ function transactionsQuery(db: Db, month: Month | null, filters?: TxFilters) {
       }
 
       return db
-        .select()
+        .select(TRANSACTION_COLUMNS)
         .from(transaction)
         .where(and(...conditions))
         .orderBy(desc(transaction.occurredAt))
@@ -357,7 +386,7 @@ function budgetsQuery(db: Db, month: Month) {
       // Every budget whose scope covers this month; several can, and
       // `effectiveBudgets` keeps the one most specific per category.
       const covering = db
-        .select()
+        .select(BUDGET_COLUMNS)
         .from(budget)
         .where(
           and(
@@ -393,7 +422,7 @@ export function useAllBudgets(): QueryResult<Budget[]> {
 
   const { data, isPending, error } = useQuery<Budget[]>({
     queryKey: ["budget", "all"],
-    queryFn: () => db.select().from(budget).all(),
+    queryFn: () => db.select(BUDGET_COLUMNS).from(budget).all(),
   });
 
   return { data, isPending, error };
@@ -464,7 +493,11 @@ export function useTransaction(id: ID): QueryResult<Transaction | null> {
   const { data, isPending, error } = useQuery<Transaction | null>({
     queryKey: ["transaction", "one", id],
     queryFn: () =>
-      db.select().from(transaction).where(eq(transaction.id, id)).get() ??
+      db
+        .select(TRANSACTION_COLUMNS)
+        .from(transaction)
+        .where(eq(transaction.id, id))
+        .get() ??
       null,
   });
 
@@ -521,22 +554,38 @@ export function useAddTransaction(): MutationResult<NewTransaction> {
     mutationFn: async (input: NewTransaction) =>
       db
         .insert(transaction)
-        .values({ ...input, id: newTransactionId() })
+        .values({
+          ...input,
+          id: newTransactionId(),
+          ...newTransactionStamp(db),
+        })
         .run(),
-    onSuccess: () => invalidateTransactions(queryClient),
+    onSuccess: () => {
+      invalidateTransactions(queryClient);
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
 }
 
+/** `created_at` / `created_device` are left alone on purpose: they record when
+ *  and where the expense was *entered*, which an edit doesn't change. */
 export function useUpdateTransaction(): MutationResult<TransactionPatch> {
   const db = useDrizzle();
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
     mutationFn: async ({ id, ...patch }: TransactionPatch) =>
-      db.update(transaction).set(patch).where(eq(transaction.id, id)).run(),
-    onSuccess: () => invalidateTransactions(queryClient),
+      db
+        .update(transaction)
+        .set({ ...patch, ...editStamp() })
+        .where(eq(transaction.id, id))
+        .run(),
+    onSuccess: () => {
+      invalidateTransactions(queryClient);
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
@@ -548,8 +597,14 @@ export function useDeleteTransaction(): MutationResult<ID> {
 
   const mutation = useMutation({
     mutationFn: async (id: ID) =>
-      db.delete(transaction).where(eq(transaction.id, id)).run(),
-    onSuccess: () => invalidateTransactions(queryClient),
+      db.transaction((tx) => {
+        tx.delete(transaction).where(eq(transaction.id, id)).run();
+        recordDeletions(tx, "transaction", [id]);
+      }),
+    onSuccess: () => {
+      invalidateTransactions(queryClient);
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
@@ -564,38 +619,65 @@ export function useUpsertBudget(): MutationResult<BudgetInput> {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async ({ id, ...input }: BudgetInput) => {
-      if (id) {
-        if (input.limitMinor <= 0) {
-          return db.delete(budget).where(eq(budget.id, id)).run();
+    mutationFn: async ({ id, ...input }: BudgetInput) =>
+      db.transaction((tx) => {
+        if (id) {
+          if (input.limitMinor <= 0) {
+            tx.delete(budget).where(eq(budget.id, id)).run();
+            recordDeletions(tx, "budget", [id]);
+            return;
+          }
+          tx.update(budget)
+            .set({ ...input, ...editStamp() })
+            .where(eq(budget.id, id))
+            .run();
+          return;
         }
-        return db.update(budget).set(input).where(eq(budget.id, id)).run();
-      }
 
-      if (input.limitMinor <= 0) {
-        return db.delete(budget).where(sameScopeWhere(input)).run();
-      }
+        if (input.limitMinor <= 0) {
+          // Ids first: the tombstones need to name what's being deleted.
+          const doomed = tx
+            .select({ id: budget.id })
+            .from(budget)
+            .where(sameScopeWhere(input))
+            .all()
+            .map((row) => row.id);
+          tx.delete(budget).where(sameScopeWhere(input)).run();
+          recordDeletions(tx, "budget", doomed);
+          return;
+        }
 
-      const existing = db
-        .select({ id: budget.id })
-        .from(budget)
-        .where(sameScopeWhere(input))
-        .get();
-      if (existing) {
-        // Re-saving counts as the latest save, so it takes precedence over
-        // anything overlapping — see `src/lib/budget-scope.ts`.
-        return db
-          .update(budget)
-          .set({ limitMinor: input.limitMinor, createdAt: Date.now() })
-          .where(eq(budget.id, existing.id))
+        const existing = tx
+          .select({ id: budget.id })
+          .from(budget)
+          .where(sameScopeWhere(input))
+          .get();
+        if (existing) {
+          // Re-saving counts as the latest save, so it takes precedence over
+          // anything overlapping — see `src/lib/budget-scope.ts`.
+          tx.update(budget)
+            .set({
+              limitMinor: input.limitMinor,
+              createdAt: Date.now(),
+              ...editStamp(),
+            })
+            .where(eq(budget.id, existing.id))
+            .run();
+          return;
+        }
+        tx.insert(budget)
+          .values({
+            ...input,
+            id: newBudgetId(),
+            createdAt: Date.now(),
+            ...editStamp(),
+          })
           .run();
-      }
-      return db
-        .insert(budget)
-        .values({ ...input, id: newBudgetId(), createdAt: Date.now() })
-        .run();
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget"] });
+      notifyLocalChange();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budget"] }),
   });
 
   return toMutationResult(mutation);
@@ -618,6 +700,9 @@ export function useDeleteBudget(): MutationResult<BudgetDeletion> {
         if (!row) return;
 
         tx.delete(budget).where(eq(budget.id, id)).run();
+        // The original id is gone either way — a split replaces it with new
+        // rows rather than editing it — so other devices must drop it too.
+        recordDeletions(tx, "budget", [id]);
         if (!onlyMonth) return;
 
         for (const scope of withoutMonth(row, onlyMonth)) {
@@ -630,11 +715,15 @@ export function useDeleteBudget(): MutationResult<BudgetDeletion> {
               // Kept, not refreshed: the pieces are the same budget as before
               // and shouldn't start winning ties it used to lose.
               createdAt: row.createdAt,
+              ...editStamp(),
             })
             .run();
         }
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budget"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget"] });
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
@@ -662,17 +751,29 @@ export function useUpsertBudgets(): MutationResult<NewBudget[]> {
             .get();
           if (existing) {
             tx.update(budget)
-              .set({ limitMinor: row.limitMinor, createdAt: now + index })
+              .set({
+                limitMinor: row.limitMinor,
+                createdAt: now + index,
+                ...editStamp(),
+              })
               .where(eq(budget.id, existing.id))
               .run();
           } else {
             tx.insert(budget)
-              .values({ ...row, id: newBudgetId(), createdAt: now + index })
+              .values({
+                ...row,
+                id: newBudgetId(),
+                createdAt: now + index,
+                ...editStamp(),
+              })
               .run();
           }
         });
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budget"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget"] });
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
@@ -692,13 +793,36 @@ export function useClearAllData(): MutationResult<void> {
   const mutation = useMutation({
     mutationFn: async () =>
       db.transaction((tx) => {
+        // Tombstoned like any other delete, so once sync exists a clear
+        // reaches the user's other devices too (where the mass-change brake,
+        // design §11.3, asks before applying it).
+        const ids = (rows: { id: ID }[]) => rows.map((row) => row.id);
+        const budgetIds = ids(tx.select({ id: budget.id }).from(budget).all());
+        const transactionIds = ids(
+          tx.select({ id: transaction.id }).from(transaction).all(),
+        );
+        const categoryIds = ids(
+          tx
+            .select({ id: category.id })
+            .from(category)
+            .where(eq(category.isDefault, false))
+            .all(),
+        );
+
         // Budgets and transactions first: both reference categories.
         tx.delete(budget).run();
         tx.delete(transaction).run();
         tx.delete(category).where(eq(category.isDefault, false)).run();
+
+        recordDeletions(tx, "budget", budgetIds);
+        recordDeletions(tx, "transaction", transactionIds);
+        recordDeletions(tx, "category", categoryIds);
       }),
     // Everything cached is now wrong, so drop all of it rather than listing keys.
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
@@ -709,10 +833,11 @@ export function useUpsertCategory(): MutationResult<Category> {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async (input: Category) =>
-      db
+    mutationFn: async (input: Category) => {
+      const stamp = editStamp();
+      return db
         .insert(category)
-        .values(input)
+        .values({ ...input, ...stamp })
         .onConflictDoUpdate({
           target: category.id,
           set: {
@@ -720,10 +845,13 @@ export function useUpsertCategory(): MutationResult<Category> {
             icon: input.icon,
             color: input.color,
             sortOrder: input.sortOrder,
+            ...stamp,
           },
         })
-        .run(),
+        .run();
+    },
     onSuccess: () => {
+      notifyLocalChange();
       queryClient.invalidateQueries({ queryKey: ["category"] });
       // Not ['transaction']: transaction rows only ever store a categoryId —
       // every consumer joins name/icon/color client-side against `useCategories`,
@@ -761,10 +889,21 @@ export function useDeleteCategory(): MutationResult<ID> {
   const mutation = useMutation({
     mutationFn: async (id: ID) =>
       db.transaction((tx) => {
+        const budgetIds = tx
+          .select({ id: budget.id })
+          .from(budget)
+          .where(eq(budget.categoryId, id))
+          .all()
+          .map((row) => row.id);
         tx.delete(budget).where(eq(budget.categoryId, id)).run();
-        return tx.delete(category).where(eq(category.id, id)).run();
+        tx.delete(category).where(eq(category.id, id)).run();
+        // After both deletes: if either aborts (FK, default-category trigger),
+        // the whole transaction rolls back and no tombstone is left behind.
+        recordDeletions(tx, "budget", budgetIds);
+        recordDeletions(tx, "category", [id]);
       }),
     onSuccess: () => {
+      notifyLocalChange();
       queryClient.invalidateQueries({ queryKey: ["category"] });
       // ['budget'] because rows were actually removed here, not just for the
       // sortOrder reason useUpsertCategory invalidates it for. Transaction keys
@@ -800,16 +939,25 @@ export function useImportTransactions(): MutationResult<ImportRequest> {
     mutationFn: async ({ categories, transactions, budgets }: ImportRequest) =>
       db.transaction((tx) => {
         for (const row of categories) {
-          tx.insert(category).values(row).onConflictDoNothing().run();
+          tx.insert(category)
+            .values({ ...row, ...editStamp() })
+            .onConflictDoNothing()
+            .run();
         }
 
-        // Chunked because every row contributes four bound parameters and a
+        // Chunked because every row contributes nine bound parameters and a
         // multi-thousand-row file would otherwise blow SQLite's variable limit
-        // in a single statement.
+        // in a single statement. Each row gets its own stamp: `created_at`
+        // marks the import moment, which is also what lets the same file
+        // imported on two phones collapse to one copy (design §12.10).
         for (let i = 0; i < transactions.length; i += IMPORT_CHUNK_ROWS) {
           const chunk = transactions
             .slice(i, i + IMPORT_CHUNK_ROWS)
-            .map((input) => ({ ...input, id: newTransactionId() }));
+            .map((input) => ({
+              ...input,
+              id: newTransactionId(),
+              ...newTransactionStamp(tx),
+            }));
           tx.insert(transaction).values(chunk).run();
         }
 
@@ -825,19 +973,29 @@ export function useImportTransactions(): MutationResult<ImportRequest> {
             .get();
           if (existing) {
             tx.update(budget)
-              .set({ limitMinor: input.limitMinor, createdAt: now + index })
+              .set({
+                limitMinor: input.limitMinor,
+                createdAt: now + index,
+                ...editStamp(),
+              })
               .where(eq(budget.id, existing.id))
               .run();
           } else {
             // Offset by position so later rows in the file win ties, the
             // same as if they'd been added one after another by hand.
             tx.insert(budget)
-              .values({ ...input, id: newBudgetId(), createdAt: now + index })
+              .values({
+                ...input,
+                id: newBudgetId(),
+                createdAt: now + index,
+                ...editStamp(),
+              })
               .run();
           }
         });
       }),
     onSuccess: () => {
+      notifyLocalChange();
       invalidateTransactions(queryClient);
       // (`invalidateTransactions` already covers ['budget'].)
       // Unlike every other transaction write, an import can create categories
