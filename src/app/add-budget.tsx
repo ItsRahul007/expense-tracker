@@ -3,6 +3,7 @@ import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
+import { useKeyboardHeight } from "@/hooks/use-keyboard-height";
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
 import { Button, Card, Chip, MonthSwitcher } from "@/components/ui";
@@ -60,6 +61,7 @@ export default function AddBudgetScreen() {
     } as never);
   }, [navigation, creatingCategory]);
 
+  const keyboardHeight = useKeyboardHeight();
   const categoryId = chosenCategory ?? categories?.[0]?.id ?? null;
   const limitMinor = Number(draft.replace(/\D/g, "")) * 100;
   const canSave = categoryId !== null && limitMinor > 0;
@@ -198,6 +200,8 @@ export default function AddBudgetScreen() {
             loading={upsertBudget.isPending}
           />
         </View>
+        {/* Room to scroll the Save button above the keyboard (see the hook). */}
+        <View style={{ height: keyboardHeight }} />
       </ScrollView>
     </View>
   );

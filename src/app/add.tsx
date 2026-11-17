@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 
+import { useKeyboardHeight } from "@/hooks/use-keyboard-height";
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
 import { Button, Card, Chip, DatePickerDialog } from "@/components/ui";
@@ -53,7 +54,7 @@ export default function AddScreen() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [note, setNote] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardHeight = useKeyboardHeight();
 
   /** Defaults to the last category used, which is right far more often than
    *  alphabetical order — it makes the common case a two-field form. */
@@ -75,19 +76,6 @@ export default function AddScreen() {
     });
     router.back();
   };
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
-      setKeyboardHeight(0);
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   return (
     <KeyboardAvoidingView
