@@ -45,6 +45,13 @@ import { useSession } from "./session-provider";
 const DEBOUNCE_MS = 3_000;
 /** While the app is open, sync at least this often. */
 const INTERVAL_MS = 5 * 60_000;
+/** After a failure that will probably clear up by itself (no network, rate
+ *  limit, Google having a moment), try again on this backoff: 10 s, 20 s, 40 s
+ *  … capped at 2 min, until a sync succeeds. Without it, an expense saved
+ *  offline would wait for the next edit, app switch or 5-minute tick. */
+const RETRY_BASE_MS = 10_000;
+const RETRY_MAX_MS = 2 * 60_000;
+const TRANSIENT = new Set(["offline", "rate_limited", "server"]);
 
 export type SyncStatus = {
   syncing: boolean;
@@ -124,8 +131,38 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(() => setStatus((s) => ({ ...s, ...readStored() })), [readStored]);
 
+  const retry = useRef<{ timer: ReturnType<typeof setTimeout> | null; attempt: number }>({
+    timer: null,
+    attempt: 0,
+  });
+  const retrySync = useRef<() => void>(() => {});
+
+  const scheduleRetry = useCallback(
+    (outcome: SyncOutcome) => {
+      const state = retry.current;
+      if (state.timer) clearTimeout(state.timer);
+      state.timer = null;
+      if (outcome.status !== "error" || !TRANSIENT.has(outcome.error.code)) {
+        state.attempt = 0;
+        return;
+      }
+      const delay = Math.min(RETRY_BASE_MS * 2 ** state.attempt, RETRY_MAX_MS);
+      state.attempt += 1;
+      state.timer = setTimeout(() => retrySync.current(), delay);
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      if (retry.current.timer) clearTimeout(retry.current.timer);
+    },
+    [],
+  );
+
   const afterOutcome = useCallback(
     (outcome: SyncOutcome) => {
+      scheduleRetry(outcome);
       if (outcome.status === "synced") {
         // Synced rows can touch every cached query.
         if (outcome.applied > 0) queryClient.invalidateQueries();
@@ -142,7 +179,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       }
       return outcome;
     },
-    [queryClient, readStored],
+    [queryClient, readStored, scheduleRetry],
   );
 
   const run = useCallback(
@@ -171,7 +208,10 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const syncRef = useRef(syncNow);
   useEffect(() => {
     syncRef.current = syncNow;
-  }, [syncNow]);
+    retrySync.current = () => {
+      if (isAutoSync(db)) void syncNow();
+    };
+  }, [syncNow, db]);
 
   useEffect(() => {
     if (!ready) return;
