@@ -2,10 +2,13 @@ import { File, Paths } from "expo-file-system";
 import { router } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import { Alert, Platform, ScrollView, Text, View } from "react-native";
 
 import { Card, Chip, ScreenHeader, SectionTitle, SettingsRow } from "@/components/ui";
+import { backupSummary } from "@/lib/backup-status";
 import { formatISODate } from "@/lib/format";
+import { useSession } from "@/providers/session-provider";
+import { useSync } from "@/providers/sync-provider";
 import {
   exportAllData,
   useCategories,
@@ -41,6 +44,10 @@ export default function SettingsScreen() {
   const { data: allEntries } = useTransactions(null);
 
   const [exporting, setExporting] = useState(false);
+  const { session } = useSession();
+  const { status: backup } = useSync();
+  // Web has no Google sign-in (design §2); a dev-build "skip" has no account.
+  const showAccount = Platform.OS !== "web" && session.user !== null;
 
   const exportLedger = async () => {
     setExporting(true);
@@ -81,6 +88,21 @@ export default function SettingsScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
       >
+        {showAccount ? (
+          <View className="mb-6">
+            <SectionTitle title="Account" />
+            <Card padded={false} className="overflow-hidden">
+              <SettingsRow
+                icon={backup.lastError && backup.lastError.code !== "offline" ? "alert-circle-outline" : "person-circle-outline"}
+                label={session.user?.email ?? "Google account"}
+                value={backupSummary(backup)}
+                onPress={() => router.push("/account")}
+                showSeparator={false}
+              />
+            </Card>
+          </View>
+        ) : null}
+
         <SectionTitle title="Appearance" />
         <Card>
           <Text className="font-sans-medium mb-3 text-body text-fg">Theme</Text>
@@ -140,8 +162,9 @@ export default function SettingsScreen() {
         {DeveloperSection ? <DeveloperSection /> : null}
 
         <Text className="font-sans mt-5 px-1 text-label text-muted">
-          Everything is stored on this device only. Export now and then — removing
-          the app takes the data with it.
+          {backup.connected
+            ? "Saved on this phone and backed up to your Google Drive."
+            : "Everything is stored on this device only. Export now and then — removing the app takes the data with it."}
         </Text>
       </ScrollView>
     </View>

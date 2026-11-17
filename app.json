@@ -8,7 +8,8 @@
     "scheme": "expensetracker",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/icon.png"
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "com.rahulghosh.expensetracker"
     },
     "android": {
       "adaptiveIcon": {
@@ -70,7 +71,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.REPLACE-WITH-IOS-URL-SCHEME"
+          "iosUrlScheme": "com.googleusercontent.apps.289338048967-ejv6bunpmgfi06k3ee1n4l6ip5eg1tgg"
         }
       ]
     ],

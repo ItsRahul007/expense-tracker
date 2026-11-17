@@ -96,6 +96,27 @@ export function readLocal(db: Store): Dataset {
   };
 }
 
+/**
+ * Removes this phone's copy of the data — for "Remove this phone's data and
+ * continue" when a different account signs in (design §7.7). Deliberately
+ * writes **no** tombstones: this is not a deletion the sheet or other devices
+ * should hear about, only this phone letting go of its copy. Refuses while
+ * anything is still unsynced, so it can never destroy the only copy.
+ */
+export function wipeLocalData(db: Store): { ok: true } | { ok: false; unsynced: number } {
+  const unsynced = countUnsynced(db);
+  if (unsynced > 0) return { ok: false, unsynced };
+  db.transaction((tx) => {
+    tx.delete(budget).run();
+    tx.delete(transaction).run();
+    tx.delete(category).where(eq(category.isDefault, false)).run();
+    tx.delete(tombstone).run();
+    tx.delete(dedupeException).run();
+    tx.delete(rowHistory).run();
+  });
+  return { ok: true };
+}
+
 /** Rows, tombstones and exceptions changed here and not yet seen in the sheet. */
 export function countUnsynced(db: Store): number {
   const n = (rows: { n: number }[]) => rows[0]?.n ?? 0;

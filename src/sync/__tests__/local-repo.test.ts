@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 
 import { resetClockForTests } from "../clock";
 import { diffPlan } from "../merge";
-import { applyPlan, countUnsynced, readLocal } from "../local-repo";
+import { applyPlan, countUnsynced, readLocal, wipeLocalData } from "../local-repo";
 import { buildPlan, needsConfirmation } from "../plan";
 import { resetDeviceIdForTests } from "../tracking";
 import type { Dataset, TransactionRecord } from "../types";
@@ -187,5 +187,24 @@ describe("needsConfirmation (mass-change brake)", () => {
 
   it("stops at more than 50 rows even if under 20%", () => {
     expect(needsConfirmation(deleting(51, 1_000))).toBe(true);
+  });
+});
+
+describe("wipeLocalData", () => {
+  it("refuses while anything is unsynced", () => {
+    const { db } = createTestDb();
+    insertLocal(db, tx("t-1"));
+    expect(wipeLocalData(db)).toEqual({ ok: false, unsynced: expect.any(Number) });
+    expect(db.select().from(transaction).all()).toHaveLength(1);
+  });
+
+  it("removes the local copy without writing tombstones", () => {
+    const { db } = createTestDb();
+    insertLocal(db, tx("t-1"), false);
+    db.update(category).set({ syncDirty: false }).run();
+    expect(wipeLocalData(db)).toEqual({ ok: true });
+    expect(db.select().from(transaction).all()).toEqual([]);
+    expect(db.select().from(tombstone).all()).toEqual([]);
+    expect(db.select().from(category).all()).toHaveLength(8);
   });
 });
