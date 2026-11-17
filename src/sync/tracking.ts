@@ -13,11 +13,10 @@ import { syncState, tombstone } from "@/db/schema/schema";
 import type { ID } from "@/types/domain";
 
 import { nextStamp } from "./clock";
+import type { SyncEntity } from "./types";
 
 /** Anything that can run Drizzle statements: the database or a transaction. */
 type Writer = Pick<Db, "insert" | "select">;
-
-export type SyncEntity = "transaction" | "category" | "budget";
 
 // --- this install's identity -------------------------------------------------
 
