@@ -97,7 +97,7 @@ describe("§12.4 survivor", () => {
     expect(data.tombstones).toEqual([
       expect.objectContaining({ entity: "transaction", id: b.id, reason: "duplicate", mergedInto: a.id }),
     ]);
-    expect(merges).toEqual([{ entity: "transaction", survivor: a.id, duplicate: b.id }]);
+    expect(merges).toEqual([{ entity: "transaction", survivor: a.id, duplicate: b.id, row: b }]);
   });
 
   it("is the same whatever order the rows arrive in", () => {

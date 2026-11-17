@@ -27,6 +27,9 @@ export type DuplicateMerge = {
   entity: "transaction" | "category" | "budget";
   survivor: ID;
   duplicate: ID;
+  /** For expenses: the duplicate as it was, so "Undo" can restore it even when
+   *  it arrived from another phone and was never stored on this one. */
+  row?: TransactionRecord;
 };
 
 export type DuplicateSuggestion = { a: TransactionRecord; b: TransactionRecord };
@@ -247,7 +250,7 @@ export function dedupe(input: Dataset, options: DedupeOptions): DedupeResult {
         tombstones.push(
           duplicateTombstone("transaction", dup.id, survivor.id, Math.max(dup.updatedAt, survivor.updatedAt) + 1),
         );
-        merges.push({ entity: "transaction", survivor: survivor.id, duplicate: dup.id });
+        merges.push({ entity: "transaction", survivor: survivor.id, duplicate: dup.id, row: dup });
       }
     }
 
