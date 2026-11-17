@@ -281,6 +281,9 @@ export type MergePlan = {
   /** Local rows this plan deletes, per entity, and how many there were — for the
    *  mass-change brake (design §11.3). */
   localDeletes: Record<SyncEntity, number>;
+  /** Of `localDeletes`, the ones a person asked for (tombstone reason 'user') —
+   *  duplicate merges are excluded, since they never lose information. */
+  localUserDeletes: Record<SyncEntity, number>;
   localCounts: Record<SyncEntity, number>;
 };
 
@@ -294,6 +297,8 @@ export function diffPlan(local: Dataset, remote: Dataset, final: Dataset): Merge
   let sheetChanged = false;
 
   const finalTombs = new Map(final.tombstones.map((t) => [tombKey(t.entity, t.id), t]));
+
+  const userDeletes: Record<SyncEntity, number> = { transaction: 0, category: 0, budget: 0 };
 
   function entity<T extends { id: ID }>(name: SyncEntity, l: T[], r: T[], f: T[]): EntityChanges<T> {
     const lm = byId(l);
@@ -318,6 +323,7 @@ export function diffPlan(local: Dataset, remote: Dataset, final: Dataset): Merge
       if (fm.has(id)) continue;
       changes.delete.push(id);
       const tomb = finalTombs.get(tombKey(name, id));
+      if (tomb?.reason !== "duplicate") userDeletes[name] += 1;
       history.push({
         entity: name,
         id,
@@ -367,6 +373,7 @@ export function diffPlan(local: Dataset, remote: Dataset, final: Dataset): Merge
       category: categories.delete.length,
       budget: budgets.delete.length,
     },
+    localUserDeletes: userDeletes,
     localCounts: {
       transaction: local.transactions.length,
       category: local.categories.length,

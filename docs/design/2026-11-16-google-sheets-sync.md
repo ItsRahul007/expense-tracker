@@ -54,7 +54,7 @@ These are rules, and every later section follows them:
 | P1 | **Write locally first, always** | Mutations in `src/queries/live.ts` stay exactly as they are (plus bookkeeping columns). Sync never sits on the write path. |
 | P2 | **The remote never replaces the local database** | There is no "use Google's data" or "replace this device" action anywhere. Restore and first connect are both **merges**: rows are added; nothing local is dropped. |
 | P3 | **Every local row overwritten or removed by sync is kept** | Before sync overwrites or deletes a local row, the old version is copied to a local `row_history` table (§9.4). Anything can be recovered. |
-| P4 | **Mass-change brake** | If a sync would delete more than 20% of local expenses (or more than 50 rows), it stops and asks the user (§11.3). |
+| P4 | **Mass-change brake** | If a sync would delete more than 50 local expenses, or more than 20% of them when that's at least 5, it stops and asks the user (§11.3). Duplicate merges don't count. |
 | P5 | **A broken sheet is never trusted** | An empty, damaged or newer-version sheet never causes local deletions; the app re-uploads from the phone or waits (§11.2). |
 | P6 | **Auth problems never lock the user out** | An expired or revoked token pauses sync and shows a "Reconnect" banner. It never signs the user out or hides their data. |
 | P7 | **Sign-out never deletes data automatically** | Data stays on the phone after sign-out. Removing it is a separate, explicit step that's only allowed once everything is uploaded (§7.6). |
@@ -447,7 +447,7 @@ Before applying anything:
 - Rows that fail parsing are kept in an `_errors` tab, never silently dropped, and never cause local deletions.
 
 ### 11.3 Mass-change brake
-Thresholds: > 20% of local expenses or > 50 rows deleted in one sync. The pending plan is shown as "Your other device deleted 312 expenses. Apply?" with **Apply** / **Keep mine** ("Keep mine" re-stamps the local rows so they win and re-upload).
+Thresholds: > 50 expenses, or > 20% of local expenses when that's at least 5, deleted in one sync by a person (duplicate merges don't count; they lose no information). The pending plan is shown as "Your other device deleted 312 expenses. Apply?" with **Apply** / **Keep mine** ("Keep mine" re-stamps the local rows so they win and re-upload).
 
 ### 11.4 On-device snapshots
 Once a day (on the first sync of the day) and before any bootstrap merge: `VACUUM INTO '<documentDir>/snapshots/expense-YYYY-MM-DD.db'`, keeping the last 3. These are a last-resort recovery, independent of Google. Phase 4 adds a hidden recovery action.

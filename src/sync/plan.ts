@@ -52,17 +52,20 @@ export function buildPlan(local: Dataset, remote: Dataset, options: BuildPlanOpt
 
 export const BRAKE_RATIO = 0.2;
 export const BRAKE_ROWS = 50;
+/** Below this many deletions the ratio rule doesn't apply — deleting your
+ *  only expense on another phone shouldn't ask "are you sure?". */
+export const BRAKE_MIN_ROWS = 5;
 
 /**
  * True when a plan would delete an unusual share of the phone's expenses — a
  * cleared sheet, another device's "clear all", a bug. The sync stops and asks
- * instead of applying it. Duplicate merges don't count: they never lose an
+ * instead of applying it: more than 50 expenses, or more than 20% of them when
+ * that's at least 5. Duplicate merges don't count: they never lose an
  * expense's information.
  */
 export function needsConfirmation(plan: FullPlan): boolean {
-  const duplicateDeletes = plan.merges.filter((m) => m.entity === "transaction").length;
-  const deletes = plan.localDeletes.transaction - duplicateDeletes;
+  const deletes = plan.localUserDeletes.transaction;
   const total = plan.localCounts.transaction;
-  if (deletes <= 0) return false;
-  return deletes > BRAKE_ROWS || (total > 0 && deletes / total > BRAKE_RATIO);
+  if (deletes > BRAKE_ROWS) return true;
+  return deletes >= BRAKE_MIN_ROWS && total > 0 && deletes / total > BRAKE_RATIO;
 }

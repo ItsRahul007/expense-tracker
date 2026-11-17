@@ -180,8 +180,9 @@ describe("needsConfirmation (mass-change brake)", () => {
     expect(needsConfirmation(deleting(20, 100))).toBe(false);
   });
 
-  it("stops at more than 20%", () => {
-    expect(needsConfirmation(deleting(3, 10))).toBe(true);
+  it("stops at more than 20% once at least 5 are deleted", () => {
+    expect(needsConfirmation(deleting(6, 20))).toBe(true);
+    expect(needsConfirmation(deleting(4, 4))).toBe(false);
   });
 
   it("stops at more than 50 rows even if under 20%", () => {
