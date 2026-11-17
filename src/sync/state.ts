@@ -45,6 +45,8 @@ export type SyncStateValues = {
   restore_pending: boolean;
   spreadsheet_id: string;
   last_sync_at: number;
+  /** `_meta` last-write stamp the sheet had after this device's last sync
+   *  (see `metaStamp`); the fast path compares against it. */
   last_remote_version: string;
   last_error: StoredError;
   auto_sync: boolean;

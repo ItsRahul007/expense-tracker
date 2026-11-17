@@ -18,7 +18,10 @@ import { a1, type DriveClient, type SheetsClient, SyncHttpError } from "./google
 import { applyPlan, countUnsynced, readLocal } from "./local-repo";
 import { buildPlan, type FullPlan, needsConfirmation } from "./plan";
 import {
+  decodeMetaTab,
   decodeSheet,
+  metaStamp,
+  TAB,
   encodeDataset,
   type Grid,
   padGrid,
@@ -239,7 +242,7 @@ export function createSyncEngine(deps: EngineDeps) {
       plan.local.budgets.upsert.length +
       plan.local.budgets.delete.length;
 
-    return { kind: "done" as const, plan, pushed, applied };
+    return { kind: "done" as const, plan, pushed, applied, meta: decoded.meta };
   }
 
   async function run(options: SyncOptions): Promise<SyncOutcome> {
@@ -250,16 +253,17 @@ export function createSyncEngine(deps: EngineDeps) {
       const file = await drive.getFile(spreadsheetId);
       if (file.trashed) throw new EngineError("sheet_missing", "The spreadsheet is in the Drive trash.");
 
-      // Fast path (design §7.4): nothing changed on either side.
+      // Fast path (design §7.4): nothing changed on either side. "Remote
+      // unchanged" is judged from `_meta`'s last-write stamp — one tiny read —
+      // not Drive's version, which ignores Sheets cell edits.
       const dirty = countUnsynced(db) > 0;
-      if (
-        !dirty &&
-        !getState(db, "restore_pending") &&
-        file.version !== undefined &&
-        file.version === getState(db, "last_remote_version")
-      ) {
-        setState(db, "last_sync_at", now());
-        return { status: "skipped", reason: "up_to_date" };
+      const seen = getState(db, "last_remote_version");
+      if (!dirty && !getState(db, "restore_pending") && seen) {
+        const { values } = await sheets.readTabs(spreadsheetId, [TAB.meta]);
+        if (metaStamp(decodeMetaTab(values[TAB.meta])) === seen) {
+          setState(db, "last_sync_at", now());
+          return { status: "skipped", reason: "up_to_date" };
+        }
       }
 
       const first = await pass(spreadsheetId, options, true);
@@ -276,10 +280,10 @@ export function createSyncEngine(deps: EngineDeps) {
         if (verify.kind === "done") last = { ...verify, pushed: true, applied: first.applied + verify.applied };
       }
 
-      const after = await drive.getFile(spreadsheetId);
       setStates(db, {
         last_sync_at: now(),
-        last_remote_version: after.version ?? null,
+        // The sheet as this device last saw it — after its own write, if any.
+        last_remote_version: metaStamp(last.meta),
         last_error: null,
         pending_review: null,
         restore_pending: null,

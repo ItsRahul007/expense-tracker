@@ -142,7 +142,22 @@ describe("syncOnce", () => {
     const reads = google.calls.reads;
 
     await expect(phone.sync()).resolves.toEqual({ status: "skipped", reason: "up_to_date" });
-    expect(google.calls.reads).toBe(reads);
+    // Exactly one tiny read of `_meta`; no full pull, no write.
+    expect(google.calls.reads).toBe(reads + 1);
+  });
+
+  it("a phone with nothing to upload still notices the other phone's write", async () => {
+    // Regression: the fast path used Drive's file version, which real Drive
+    // doesn't bump for Sheets cell edits — so the idle phone never pulled.
+    const a = makeDevice(google, "d-a");
+    const b = makeDevice(google, "d-b");
+    await connectAll(a, b);
+    a.add({ note: "from a" });
+    await a.sync();
+
+    const outcome = await b.sync();
+    expect(outcome.status).toBe("synced");
+    expect(b.expenses().map((e) => e.note)).toEqual(["from a"]);
   });
 
   it("propagates adds, edits and deletes between two phones", async () => {

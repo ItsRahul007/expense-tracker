@@ -6,7 +6,9 @@
  *  - values come back with trailing empty cells and rows trimmed;
  *  - reading a tab that doesn't exist fails the whole batchGet (the client's
  *    fallback is reproduced by `readTabs`);
- *  - every change bumps the file's `version`.
+ *  - Drive's file `version` does NOT move when cells change through the
+ *    Sheets API (observed on a real account) — only structural changes bump
+ *    it here, so nothing can lean on it to detect another device's writes.
  */
 import type { DriveClient, DriveFile, SheetProperties, SheetsClient } from "@/sync/google-api";
 import { SyncHttpError } from "@/sync/google-api";
@@ -133,7 +135,7 @@ export class FakeGoogle {
           });
         });
       }
-      this.touch(s);
+      // Deliberately no version bump — see the header comment.
     },
     batchUpdate: async (id, requests) => {
       this.check();

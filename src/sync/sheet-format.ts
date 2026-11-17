@@ -481,6 +481,23 @@ function headersMissing(tab: TabName, missing: string[]): DecodeResult {
   return { ok: false, error: "headers_missing", tab, missing };
 }
 
+/**
+ * A fingerprint of the last write to the sheet, from `_meta`. Every push
+ * rewrites `last_write_at` / `last_writer_device`, so if this matches what a
+ * device saw after its own last sync, nobody has written since — the fast
+ * path (design §7.4). Drive's file `version` can't be used for this: it
+ * doesn't move when cells change through the Sheets API.
+ */
+export function metaStamp(meta: SheetMeta | null): string | null {
+  if (!meta || meta.lastWriteAt === null) return null;
+  return `${meta.lastWriteAt}:${meta.lastWriterDevice ?? ""}`;
+}
+
+/** `_meta` alone, for the fast path. */
+export function decodeMetaTab(grid: Grid | undefined): SheetMeta | null {
+  return decodeMeta(grid);
+}
+
 function decodeMeta(grid: Grid | undefined): SheetMeta | null {
   if (!grid || grid.length < 2) return null;
   const map = new Map<string, Cell>();
