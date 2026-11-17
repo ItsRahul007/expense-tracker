@@ -1,5 +1,7 @@
 # Your checklist: Google Cloud & accounts setup
 
+> **Status (2026-11-17):** steps 1–5 done. The client IDs are in `src/constants/google.ts`, and the iOS URL scheme and `ios.bundleIdentifier` (`com.rahulghosh.expensetracker`) are in `app.json`. Keep `web_client_secret` out of the app; it lives only in the gitignored `.env.local`. Remaining: step 6 (privacy policy, before publishing), step 8 decisions, step 9 (development build).
+
 Everything here needs your Google account or your Play Console, so only you can do it.
 Phase 1 (sign-in + sync) can't be tested on a device until steps 1–6 are done.
 Design: [2026-11-16-google-sheets-sync.md](2026-11-16-google-sheets-sync.md) (§6).

@@ -7,6 +7,15 @@
 | **Author** | Rahul Ghosh |
 | **Scope** | Mandatory Google sign-in, offline-safe session, restore on reinstall, local-first sync to a Google Sheet in the user's own Drive, cross-device conflict and duplicate handling |
 
+**Implementation notes (2026-11-17), where the code differs from the text below:**
+- Tab names: `README`, `Expenses`, `Categories`, `Budgets`, `_errors`, and hidden `_deleted` (tombstones), `_not_duplicates` (exceptions), `_meta`.
+- No `updated_device` column. Exact `updated_at` ties are broken by comparing row content, which is just as deterministic and needs no extra column.
+- `first_synced_at` is stamped when a device *uploads* a row, not when a later pull first sees it. Otherwise a row uploaded at once but re-read the next day would look "uploaded late" and trigger false duplicate suggestions.
+- After every upload, `syncOnce` does one read-back pass, so uploaded rows are confirmed (marked clean) in the same sync.
+- Duplicate merges version their results from the rows involved (`max(updated_at) + 1`, tombstone device `dedupe`), never the clock, so every device produces identical output.
+- Development builds can "Skip for now" on the sign-in screen while Google isn't configured. This is held in memory and never shipped.
+- Code map: `src/sync/*` (engine, merge, dedupe, sheet format, clients), `src/auth/*` (sign-in, session), `src/providers/{session,sync}-provider.tsx`, screens `src/app/{sign-in,restore,account}.tsx`, `src/components/sync-notices.tsx`.
+
 **v2 changes:** sign-in is now mandatory and survives offline cold starts (§7). Reinstall restores *before* the app opens (§8). Explicit "the phone's data is never lost" guarantees (§3, §11). Cross-device duplicate detection (§12). The backup-only mode and every "replace this device's data" option from v1 are removed.
 
 ---
