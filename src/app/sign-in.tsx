@@ -4,12 +4,13 @@
  */
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { type GoogleAccount, signIn, signOutOfGoogle } from "@/auth/google";
 import { startSession } from "@/auth/session";
 import { Button, Card } from "@/components/ui";
+import { showSheet } from "@/lib/sheet";
 import { isGoogleConfigured } from "@/constants/google";
 import { usePalette } from "@/constants/palette";
 import { useSession } from "@/providers/session-provider";
@@ -74,7 +75,7 @@ export default function SignInScreen() {
   };
 
   const removeAndContinue = (account: GoogleAccount) => {
-    Alert.alert(
+    showSheet(
       "Remove this phone's data?",
       "It stays safe in the other account's Google Sheet. Only this phone's copy is removed.",
       [
@@ -85,7 +86,7 @@ export default function SignInScreen() {
           onPress: () => {
             const wiped = wipeLocalData(db);
             if (!wiped.ok) {
-              Alert.alert(
+              showSheet(
                 "Not backed up yet",
                 `${wiped.unsynced} change(s) on this phone haven't reached the other account's sheet. Sign in with that account first so nothing is lost.`,
               );

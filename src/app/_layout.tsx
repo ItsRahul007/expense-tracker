@@ -206,6 +206,18 @@ function RootNavigator() {
           <Stack.Screen name="transaction/[id]" />
           <Stack.Screen name="account" options={{ presentation: "modal" }} />
         </Stack.Protected>
+
+        {/* Outside the guards: messages and confirmations (showSheet) are
+            needed on the sign-in screen as well as in the app. */}
+        <Stack.Screen
+          name="sheet"
+          options={{
+            presentation: "formSheet",
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 24,
+            sheetAllowedDetents: "fitToContents",
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );

@@ -1,4 +1,6 @@
-import { Alert, View } from "react-native";
+import { View } from "react-native";
+
+import { showSheet } from "@/lib/sheet";
 
 import { Card, SectionTitle, SettingsRow } from "@/components/ui";
 import {
@@ -33,12 +35,12 @@ export function DeveloperSection() {
     try {
       await importTransactions.mutateAsync({ categories: [], transactions, budgets: [] });
       await upsertBudgets.mutateAsync(budgets);
-      Alert.alert(
+      showSheet(
         "Sample data added",
         `${transactions.length} expenses and ${budgets.length} budgets across ${SAMPLE_MONTHS} months.`,
       );
     } catch (error: unknown) {
-      Alert.alert(
+      showSheet(
         "Could not add sample data",
         error instanceof Error ? error.message : "The write failed.",
       );
@@ -46,9 +48,9 @@ export function DeveloperSection() {
   };
 
   const confirmClearAllData = () => {
-    Alert.alert(
+    showSheet(
       "Clear all data?",
-      "Deletes every expense, budget and custom category on this device. Default categories and your theme are kept. This can't be undone.",
+      "Deletes every expense, budget and custom category — on this phone and, once it syncs, on every device signed in to this account. Default categories and your theme are kept. This can't be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -56,9 +58,9 @@ export function DeveloperSection() {
           style: "destructive",
           onPress: () =>
             clearAllData.mutateAsync().then(
-              () => Alert.alert("All data cleared"),
+              () => showSheet("All data cleared"),
               (error: unknown) =>
-                Alert.alert(
+                showSheet(
                   "Could not clear data",
                   error instanceof Error ? error.message : "The delete failed.",
                 ),

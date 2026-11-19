@@ -2,12 +2,13 @@ import { File, Paths } from "expo-file-system";
 import { router } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useState } from "react";
-import { Alert, Platform, ScrollView, Text, View } from "react-native";
+import { Platform, ScrollView, Text, View } from "react-native";
 
 import { AccountRow } from "@/components/account-row";
 import { Card, Chip, ScreenHeader, SectionTitle, SettingsRow } from "@/components/ui";
 import { backupSummary } from "@/lib/backup-status";
 import { formatISODate } from "@/lib/format";
+import { showSheet } from "@/lib/sheet";
 import { useSession } from "@/providers/session-provider";
 import { useSync } from "@/providers/sync-provider";
 import {
@@ -69,10 +70,10 @@ export default function SettingsScreen() {
           dialogTitle: "Export expenses and budgets",
         });
       } else {
-        Alert.alert("Saved", `Written to ${file.uri}`);
+        showSheet("Saved", `Written to ${file.uri}`);
       }
     } catch (error) {
-      Alert.alert(
+      showSheet(
         "Export failed",
         error instanceof Error ? error.message : "The file could not be written.",
       );

@@ -6,11 +6,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, Linking, ScrollView, Switch, Text, View } from "react-native";
+import { Linking, ScrollView, Text, View } from "react-native";
 
 import { requestDriveAccess, signIn, signOutOfGoogle } from "@/auth/google";
 import { endSession } from "@/auth/session";
-import { Button, Card, ScreenHeader, SectionTitle, SettingsRow } from "@/components/ui";
+import { Button, Card, ScreenHeader, SectionTitle, SettingsRow, Toggle } from "@/components/ui";
+import { showSheet } from "@/lib/sheet";
 import { usePalette } from "@/constants/palette";
 import { useSession } from "@/providers/session-provider";
 import { useSync } from "@/providers/sync-provider";
@@ -34,7 +35,7 @@ export default function AccountScreen() {
     const result = await signIn();
     if (!result.ok) return;
     if (user && result.account.id !== user.id) {
-      Alert.alert(
+      showSheet(
         "Different account",
         `This phone backs up to ${user.email}. Choose that account to reconnect, or sign out first to switch accounts.`,
       );
@@ -112,7 +113,7 @@ export default function AccountScreen() {
       waiting > 0
         ? `${waiting} change${waiting === 1 ? "" : "s"} haven't been backed up yet. They'll stay safe on this phone and upload next time you sign in with ${user?.email ?? "this account"}.`
         : "Your expenses stay on this phone and in your Google Sheet.";
-    Alert.alert("Sign out?", message, [
+    showSheet("Sign out?", message, [
       { text: "Cancel", style: "cancel" },
       { text: "Sign out", style: "destructive", onPress: () => void finish(false) },
       {
@@ -213,11 +214,7 @@ export default function AccountScreen() {
                 <Text className="font-sans-medium text-body text-fg">Back up automatically</Text>
                 <Text className="font-sans text-label text-muted">A few seconds after each change</Text>
               </View>
-              <Switch
-                value={status.autoSync}
-                onValueChange={sync.setAutoSync}
-                trackColor={{ true: palette.brand }}
-              />
+              <Toggle value={status.autoSync} onValueChange={sync.setAutoSync} />
             </View>
             <View className="ml-[52px] h-px bg-border" />
             <View className="min-h-[52px] flex-row items-center gap-3 px-4 py-3">
@@ -228,11 +225,7 @@ export default function AccountScreen() {
                   Same expense entered on two phones within 10 minutes
                 </Text>
               </View>
-              <Switch
-                value={status.dedupeEnabled}
-                onValueChange={sync.setDedupeEnabled}
-                trackColor={{ true: palette.brand }}
-              />
+              <Toggle value={status.dedupeEnabled} onValueChange={sync.setDedupeEnabled} />
             </View>
           </Card>
         </View>
