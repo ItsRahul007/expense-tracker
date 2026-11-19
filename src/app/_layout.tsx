@@ -18,10 +18,11 @@ import {
   useColorScheme,
 } from "nativewind";
 import { useEffect } from "react";
-import { useColorScheme as useSystemColorScheme } from "react-native";
+import { Platform, useColorScheme as useSystemColorScheme } from "react-native";
 
 import { PALETTE } from "@/constants/palette";
 import { AppDataProviders } from "@/providers/app-data-providers";
+import { useSession } from "@/providers/session-provider";
 import { useSetting } from "@/queries";
 
 import "@/global.css";
@@ -97,6 +98,17 @@ function AppGates() {
 
 function RootNavigator() {
   const { colorScheme } = useColorScheme();
+  /**
+   * The sign-in gate (design §7.4). The session comes from SQLite, read
+   * synchronously, so a signed-in user goes straight to the app — offline, after
+   * a force-quit, with an expired Google token — and the sign-in screen never
+   * flashes. Web has no Google sign-in (design §2), so it isn't gated.
+   *
+   * `Stack.Protected` without `redirectTo` (SDK 58+): when a guard flips, the
+   * router lands on the first screen that's now allowed.
+   */
+  const { session } = useSession();
+  const gate = Platform.OS === "web" ? "ready" : session.status;
   const dark = colorScheme === "dark";
   const palette = dark ? PALETTE.dark : PALETTE.light;
 
@@ -124,63 +136,94 @@ function RootNavigator() {
           contentStyle: { backgroundColor: palette.bg },
         }}
       >
-        <Stack.Screen name="(tabs)" />
+        <Stack.Protected guard={gate === "signedOut"}>
+          <Stack.Screen name="sign-in" />
+        </Stack.Protected>
+
+        <Stack.Protected guard={gate === "restoring"}>
+          <Stack.Screen name="restore" options={{ gestureEnabled: false }} />
+        </Stack.Protected>
+
+        <Stack.Protected guard={gate === "ready"}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="add"
+            options={{
+              presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
+              sheetGrabberVisible: true,
+              sheetCornerRadius: 24,
+              // Nearly full height: the form has an amount field, a category
+              // grid, date chips and a note, and a short sheet would make the
+              // grid scroll immediately.
+              sheetAllowedDetents: [0.92],
+            }}
+          />
+          <Stack.Screen
+            name="add-budget"
+            options={{
+              presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
+              sheetGrabberVisible: true,
+              sheetCornerRadius: 24,
+              // Taller than it was: the form now also asks which months the
+              // budget covers, and a date range adds two month pickers.
+              sheetAllowedDetents: [0.8],
+            }}
+          />
+          <Stack.Screen
+            name="delete-budget"
+            options={{
+              presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
+              sheetGrabberVisible: true,
+              sheetCornerRadius: 24,
+              // Just an icon, a line of text and two or three buttons — a small
+              // detent keeps it from looming like the full add-budget form.
+              sheetAllowedDetents: [0.4],
+            }}
+          />
+          <Stack.Screen
+            name="delete-transaction"
+            options={{
+              presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
+              sheetGrabberVisible: true,
+              sheetCornerRadius: 24,
+              sheetAllowedDetents: [0.3],
+            }}
+          />
+          <Stack.Screen
+            name="delete-category"
+            options={{
+              presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
+              sheetGrabberVisible: true,
+              sheetCornerRadius: 24,
+              sheetAllowedDetents: [0.35],
+            }}
+          />
+          <Stack.Screen name="search" options={{ presentation: "modal" }} />
+          <Stack.Screen name="categories" options={{ presentation: "modal" }} />
+          {/* A modal rather than a sheet: the import preview can run to several
+              screens of new categories and skipped rows, and it needs the room. */}
+          <Stack.Screen name="import" options={{ presentation: "modal" }} />
+          <Stack.Screen name="transaction/[id]" />
+          <Stack.Screen name="account" options={{ presentation: "modal" }} />
+        </Stack.Protected>
+
+        {/* Outside the guards: messages and confirmations (showSheet) are
+            needed on the sign-in screen as well as in the app. */}
         <Stack.Screen
-          name="add"
+          name="sheet"
           options={{
             presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
             sheetGrabberVisible: true,
             sheetCornerRadius: 24,
-            // Nearly full height: the form has an amount field, a category
-            // grid, date chips and a note, and a short sheet would make the
-            // grid scroll immediately.
-            sheetAllowedDetents: [0.92],
+            sheetAllowedDetents: "fitToContents",
           }}
         />
-        <Stack.Screen
-          name="add-budget"
-          options={{
-            presentation: "formSheet",
-            sheetGrabberVisible: true,
-            sheetCornerRadius: 24,
-            sheetAllowedDetents: [0.6],
-          }}
-        />
-        <Stack.Screen
-          name="delete-budget"
-          options={{
-            presentation: "formSheet",
-            sheetGrabberVisible: true,
-            sheetCornerRadius: 24,
-            // Just an icon, a line of text and two buttons — a small detent
-            // keeps it from looming like the full add-budget form.
-            sheetAllowedDetents: [0.3],
-          }}
-        />
-        <Stack.Screen
-          name="delete-transaction"
-          options={{
-            presentation: "formSheet",
-            sheetGrabberVisible: true,
-            sheetCornerRadius: 24,
-            sheetAllowedDetents: [0.3],
-          }}
-        />
-        <Stack.Screen
-          name="delete-category"
-          options={{
-            presentation: "formSheet",
-            sheetGrabberVisible: true,
-            sheetCornerRadius: 24,
-            sheetAllowedDetents: [0.35],
-          }}
-        />
-        <Stack.Screen name="search" options={{ presentation: "modal" }} />
-        <Stack.Screen name="categories" options={{ presentation: "modal" }} />
-        {/* A modal rather than a sheet: the import preview can run to several
-            screens of new categories and skipped rows, and it needs the room. */}
-        <Stack.Screen name="import" options={{ presentation: "modal" }} />
-        <Stack.Screen name="transaction/[id]" />
       </Stack>
     </ThemeProvider>
   );

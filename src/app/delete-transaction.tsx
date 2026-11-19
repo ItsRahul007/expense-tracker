@@ -27,7 +27,7 @@ export default function DeleteTransactionScreen() {
   };
 
   return (
-    <View className="flex-1 bg-bg px-5 pt-2">
+    <View className="flex-1 bg-sheet dark:border-t dark:border-border px-5 pt-2">
       <View className="flex-row items-center gap-3">
         <IconBadge
           icon={category?.icon ?? "ellipsis-horizontal"}

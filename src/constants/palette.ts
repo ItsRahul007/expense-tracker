@@ -15,6 +15,7 @@ import { Platform, type ViewStyle } from "react-native";
 export const PALETTE = {
   light: {
     bg: "#F5F6F8",
+    sheet: "#F5F6F8",
     card: "#FFFFFF",
     fg: "#14151A",
     muted: "#6B7280",
@@ -26,6 +27,7 @@ export const PALETTE = {
   },
   dark: {
     bg: "#0E0F13",
+    sheet: "#17191F",
     card: "#191B21",
     fg: "#F2F3F5",
     muted: "#9AA0AA",

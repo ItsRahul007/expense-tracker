@@ -8,7 +8,7 @@
  */
 
 import { monthOf, type Month } from "@/lib/month";
-import type { Budget, NewTransaction } from "@/types/domain";
+import type { NewBudget, NewTransaction } from "@/types/domain";
 
 /** [categoryId, notes to pick from, min rupees, max rupees] */
 const TEMPLATES: [string, string[], number, number][] = [
@@ -110,7 +110,7 @@ const LIMIT_RATIOS = [0.8, 0.95, 1.05, 1.2, 1.5, 2];
  */
 export function generateSampleBudgets(
   transactions: NewTransaction[],
-): Budget[] {
+): NewBudget[] {
   const spent = new Map<string, number>();
   const months = new Set<Month>();
 
@@ -121,7 +121,7 @@ export function generateSampleBudgets(
     spent.set(key, (spent.get(key) ?? 0) + t.amountMinor);
   }
 
-  const rows: Budget[] = [];
+  const rows: NewBudget[] = [];
   for (const month of months) {
     for (const categoryId of BUDGETED) {
       if (Math.random() < 1 / 6) continue;
@@ -130,7 +130,8 @@ export function generateSampleBudgets(
         500,
         Math.round((spentRupees * pick(LIMIT_RATIOS)) / 100) * 100,
       );
-      rows.push({ categoryId, month, limitMinor: limitRupees * 100 });
+      // One-month budgets: sample limits are derived from each month's own spend.
+      rows.push({ categoryId, startMonth: month, endMonth: month, limitMinor: limitRupees * 100 });
     }
   }
 

@@ -9,4 +9,5 @@ export { Progress } from "./progress";
 export { ScreenHeader, type HeaderAction } from "./screen-header";
 export { SectionTitle } from "./section-title";
 export { SettingsRow } from "./settings-row";
+export { Toggle } from "./toggle";
 export { TransactionRow } from "./transaction-row";

@@ -1,13 +1,16 @@
-import { File, Paths } from "expo-file-system";
 import { router } from "expo-router";
-import * as Sharing from "expo-sharing";
 import { useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import { Platform, ScrollView, Text, View } from "react-native";
 
+import { AccountRow } from "@/components/account-row";
 import { Card, Chip, ScreenHeader, SectionTitle, SettingsRow } from "@/components/ui";
-import { formatISODate } from "@/lib/format";
+import { backupSummary } from "@/lib/backup-status";
+import { exportLedgerToDownloads } from "@/lib/export-ledger";
+import { showSheet } from "@/lib/sheet";
+import { useSession } from "@/providers/session-provider";
+import { useSync } from "@/providers/sync-provider";
+import { useDrizzle } from "@/queries/helper";
 import {
-  exportAllData,
   useCategories,
   useKnownMonths,
   useSetSetting,
@@ -41,33 +44,22 @@ export default function SettingsScreen() {
   const { data: allEntries } = useTransactions(null);
 
   const [exporting, setExporting] = useState(false);
+  const db = useDrizzle();
+  const { session } = useSession();
+  const { status: backup } = useSync();
+  // Web has no Google sign-in (design §2); a dev-build "skip" has no account.
+  const showAccount = Platform.OS !== "web" && session.user !== null;
 
   const exportLedger = async () => {
     setExporting(true);
     try {
-      const csv = await exportAllData();
-
-      // SDK 55's object-oriented file API. The legacy `FileSystem.*` helpers now
-      // throw unless imported from "expo-file-system/legacy".
-      const file = new File(Paths.document, `expenses-${formatISODate(Date.now())}.csv`);
-      if (file.exists) file.delete();
-      file.create();
-      file.write(csv);
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri, {
-          mimeType: "text/csv",
-          UTI: "public.comma-separated-values-text",
-          dialogTitle: "Export expenses",
-        });
-      } else {
-        Alert.alert("Saved", `Written to ${file.uri}`);
+      const result = await exportLedgerToDownloads(db);
+      if (result.ok) {
+        showSheet("Saved", `${result.fileName} is in ${result.location}.`);
+      } else if (result.reason === "failed") {
+        showSheet("Export failed", result.message);
       }
-    } catch (error) {
-      Alert.alert(
-        "Export failed",
-        error instanceof Error ? error.message : "The file could not be written.",
-      );
+      // Cancelled the folder picker: nothing to say.
     } finally {
       setExporting(false);
     }
@@ -81,6 +73,25 @@ export default function SettingsScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
       >
+        {showAccount ? (
+          <View className="mb-6">
+            <SectionTitle title="Account" />
+            <Card padded={false} className="overflow-hidden">
+              <AccountRow
+                email={session.user?.email ?? "Google account"}
+                name={session.user?.name ?? null}
+                photo={session.user?.photo ?? null}
+                status={backupSummary(backup)}
+                needsAttention={
+                  !!backup.pendingReview ||
+                  (!!backup.lastError && !["offline", "rate_limited", "server"].includes(backup.lastError.code))
+                }
+                onPress={() => router.push("/account")}
+              />
+            </Card>
+          </View>
+        ) : null}
+
         <SectionTitle title="Appearance" />
         <Card>
           <Text className="font-sans-medium mb-3 text-body text-fg">Theme</Text>
@@ -140,8 +151,9 @@ export default function SettingsScreen() {
         {DeveloperSection ? <DeveloperSection /> : null}
 
         <Text className="font-sans mt-5 px-1 text-label text-muted">
-          Everything is stored on this device only. Export now and then — removing
-          the app takes the data with it.
+          {backup.connected
+            ? "Saved on this phone and backed up to your Google Drive."
+            : "Everything is stored on this device only. Export now and then — removing the app takes the data with it."}
         </Text>
       </ScrollView>
     </View>

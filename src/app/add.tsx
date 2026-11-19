@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -10,6 +10,8 @@ import {
   View,
 } from "react-native";
 
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
+import { useSheetScroll } from "@/hooks/use-sheet-scroll";
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
 import { Button, Card, Chip, DatePickerDialog } from "@/components/ui";
@@ -53,7 +55,8 @@ export default function AddScreen() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [note, setNote] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboard = useKeyboardInset();
+  const scroll = useSheetScroll();
 
   /** Defaults to the last category used, which is right far more often than
    *  alphabetical order — it makes the common case a two-field form. */
@@ -76,152 +79,157 @@ export default function AddScreen() {
     router.back();
   };
 
-  useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
-      setKeyboardHeight(0);
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={100}
     >
-      <View className="flex-1 bg-bg">
+      <View className="flex-1 bg-sheet dark:border-t dark:border-border">
         <View className="flex-row items-center justify-between px-4 pb-2 pt-4">
           <Text className="font-sans-bold text-title text-fg">New expense</Text>
           <View />
         </View>
 
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+        <View
+          ref={keyboard.ref}
+          onLayout={keyboard.onLayout}
+          className="flex-1"
         >
-          {/* Amount first and largest — it's the only field that always needs
+          <ScrollView
+            // Drag-down closes the sheet whether or not the form scrolls (see
+            // useSheetScroll for why the content is kept 1 px taller).
+            nestedScrollEnabled
+            onLayout={scroll.onLayout}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingBottom: 24,
+              minHeight: scroll.contentMinHeight,
+            }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Amount first and largest — it's the only field that always needs
             filling, so it gets its own card and the numeric keyboard. */}
-          <Card className="py-5">
-            <Text className="font-sans-medium text-label text-muted">
-              Amount
-            </Text>
-            {/* The symbol is a fixed-width sibling and the field takes the rest of
+            <Card className="py-5">
+              <Text className="font-sans-medium text-label text-muted">
+                Amount
+              </Text>
+              {/* The symbol is a fixed-width sibling and the field takes the rest of
               the row: a TextInput sized by its content stretches past the card on
               web and clips long amounts on native. */}
-            <View className="mt-1 flex-row items-center">
-              <Text className="font-sans-bold text-display text-muted">₹</Text>
-              <TextInput
-                autoFocus
-                value={formatAmountFieldValue(amountText)}
-                onChangeText={(next) =>
-                  setAmountText(sanitizeAmountInput(next))
-                }
-                keyboardType="decimal-pad"
-                placeholder="0"
-                placeholderTextColor={palette.muted}
-                textAlign="right"
-                className="font-sans-bold ml-2 flex-1 text-display text-fg"
-                // minWidth: 0 — a flex item's min-width defaults to its content
-                // size, so without this the field refuses to shrink and pushes the
-                // whole card past the screen edge on long amounts.
-                style={{ paddingVertical: 0, minWidth: 0 }}
-                accessibilityLabel="Amount in rupees"
-              />
-            </View>
-            <Text className="font-sans mt-2 text-caption text-muted">
-              Type the rupee amount — tap . to add paise
+              <View className="mt-1 flex-row items-center">
+                <Text className="font-sans-bold text-display text-muted">
+                  ₹
+                </Text>
+                <TextInput
+                  autoFocus
+                  value={formatAmountFieldValue(amountText)}
+                  onChangeText={(next) =>
+                    setAmountText(sanitizeAmountInput(next))
+                  }
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor={palette.muted}
+                  textAlign="right"
+                  className="font-sans-bold ml-2 flex-1 text-display text-fg"
+                  // minWidth: 0 — a flex item's min-width defaults to its content
+                  // size, so without this the field refuses to shrink and pushes the
+                  // whole card past the screen edge on long amounts.
+                  style={{ paddingVertical: 0, minWidth: 0 }}
+                  accessibilityLabel="Amount in rupees"
+                />
+              </View>
+              <Text className="font-sans mt-2 text-caption text-muted">
+                Type the rupee amount — tap . to add paise
+              </Text>
+            </Card>
+
+            <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+              Category
             </Text>
-          </Card>
 
-          <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
-            Category
-          </Text>
-
-          {creatingCategory ? (
-            <CategoryEditor
-              autoFocus
-              onCancel={() => setCreatingCategory(false)}
-              onCreated={(id) => {
-                // Select it straight away — the whole reason for creating one here
-                // is to keep going with this expense.
-                setChosenCategory(id);
-                setCreatingCategory(false);
-              }}
-            />
-          ) : (
-            <CategoryPicker
-              categories={categories ?? []}
-              selectedId={categoryId}
-              onSelect={setChosenCategory}
-              onAddNew={() => setCreatingCategory(true)}
-            />
-          )}
-
-          <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
-            Date
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {Array.from({ length: DAY_CHOICES }, (_, offset) => (
-              <Chip
-                key={offset}
-                label={formatRelativeDay(dayStart(offset))}
-                selected={dayStart(offset) === occurredAt}
-                onPress={() => {
-                  setOccurredAt(dayStart(offset));
-                  setShowCalendar(false);
+            {creatingCategory ? (
+              <CategoryEditor
+                autoFocus
+                onCancel={() => setCreatingCategory(false)}
+                onCreated={(id) => {
+                  // Select it straight away — the whole reason for creating one here
+                  // is to keep going with this expense.
+                  setChosenCategory(id);
+                  setCreatingCategory(false);
                 }}
               />
-            ))}
-            <Chip
-              label={pickedOlderDay ? formatRelativeDay(occurredAt) : "Pick date"}
-              selected={pickedOlderDay}
-              onPress={() => {
-                Keyboard.dismiss();
-                setShowCalendar(true);
+            ) : (
+              <CategoryPicker
+                categories={categories ?? []}
+                selectedId={categoryId}
+                onSelect={setChosenCategory}
+                onAddNew={() => setCreatingCategory(true)}
+              />
+            )}
+
+            <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+              Date
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {Array.from({ length: DAY_CHOICES }, (_, offset) => (
+                <Chip
+                  key={offset}
+                  label={formatRelativeDay(dayStart(offset))}
+                  selected={dayStart(offset) === occurredAt}
+                  onPress={() => {
+                    setOccurredAt(dayStart(offset));
+                    setShowCalendar(false);
+                  }}
+                />
+              ))}
+              <Chip
+                label={
+                  pickedOlderDay ? formatRelativeDay(occurredAt) : "Pick date"
+                }
+                selected={pickedOlderDay}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowCalendar(true);
+                }}
+              />
+            </View>
+            <DatePickerDialog
+              visible={showCalendar}
+              value={occurredAt}
+              onChange={(day) => {
+                setOccurredAt(atMidday(day));
+                setShowCalendar(false);
               }}
+              onClose={() => setShowCalendar(false)}
             />
-          </View>
-          <DatePickerDialog
-            visible={showCalendar}
-            value={occurredAt}
-            onChange={(day) => {
-              setOccurredAt(atMidday(day));
-              setShowCalendar(false);
-            }}
-            onClose={() => setShowCalendar(false)}
-          />
 
-          <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
-            Note
-          </Text>
-          <Card padded={false}>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="Where was it? (optional)"
-              placeholderTextColor={palette.muted}
-              returnKeyType="done"
-              className="font-sans min-h-[52px] px-4 py-3 text-body text-fg"
-            />
-          </Card>
+            <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+              Note
+            </Text>
+            <Card padded={false}>
+              <TextInput
+                value={note}
+                onChangeText={setNote}
+                placeholder="Where was it? (optional)"
+                placeholderTextColor={palette.muted}
+                returnKeyType="done"
+                className="font-sans min-h-[52px] px-4 py-3 text-body text-fg"
+              />
+            </Card>
 
-          <View className="mt-8">
-            <Button
-              label={`Save ${amountMinor > 0 ? formatMoney(amountMinor) : "expense"}`}
-              onPress={save}
-              disabled={!canSave}
-              loading={addTransaction.isPending}
-            />
-          </View>
-          <View style={{ height: keyboardHeight }} />
-        </ScrollView>
+            <View className="mt-8">
+              <Button
+                label={`Save ${amountMinor > 0 ? formatMoney(amountMinor) : "expense"}`}
+                onPress={save}
+                disabled={!canSave}
+                loading={addTransaction.isPending}
+              />
+            </View>
+            <View style={{ height: keyboard.inset }} />
+          </ScrollView>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );

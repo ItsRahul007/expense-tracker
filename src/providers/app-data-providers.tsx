@@ -46,6 +46,9 @@ import { SQLiteProvider } from "expo-sqlite";
 import React, { Suspense } from "react";
 import { ActivityIndicator } from "react-native";
 
+import { SessionProvider } from "./session-provider";
+import { SyncProvider } from "./sync-provider";
+
 const queryClient = new QueryClient();
 
 export function AppDataProviders({ children }: { children: React.ReactNode }) {
@@ -68,7 +71,10 @@ export function AppDataProviders({ children }: { children: React.ReactNode }) {
           }}
         >
           <QueryClientProvider client={queryClient}>
-            {children}
+            {/* Both need the migrated database, so they mount inside it. */}
+            <SessionProvider>
+              <SyncProvider>{children}</SyncProvider>
+            </SessionProvider>
           </QueryClientProvider>
         </SQLiteProvider>
       </Suspense>

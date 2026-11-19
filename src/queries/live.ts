@@ -2,11 +2,14 @@ import * as schema from "@/db/schema/schema";
 import { budget, category, settings, transaction } from "@/db/schema/schema";
 import {
   Budget,
+  BudgetDeletion,
+  BudgetInput,
   BudgetStatus,
   Category,
   ID,
   ImportRequest,
   MonthPoint,
+  NewBudget,
   MonthSummary,
   MutationResult,
   NewTransaction,
@@ -30,6 +33,7 @@ import {
   eq,
   gte,
   inArray,
+  isNull,
   like,
   lt,
   lte,
@@ -41,23 +45,74 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import { openDatabaseSync } from "expo-sqlite";
 
 import { DATABASE_NAME } from "@/constants/common";
+import { effectiveBudgets, withoutMonth } from "@/lib/budget-scope";
 import { formatCsvRow } from "@/lib/csv";
 import { lastNMonths, Month, monthRange, shiftMonth } from "@/lib/month";
+import { notifyLocalChange } from "@/sync/local-changes";
+import {
+  editStamp,
+  newTransactionStamp,
+  recordDeletions,
+} from "@/sync/tracking";
 import { useEffect } from "react";
-import { useDrizzle } from "./helper";
+import { type Db, useDrizzle } from "./helper";
 
 const DEFAULT_SETTINGS: Settings = { theme: "system" };
 
 /**
- * Rows per `INSERT` when importing. Four columns each, so 200 rows is 800 bound
- * parameters — comfortably inside SQLite's limit with room for it to be the
- * lower, older one, while still turning a thousand-row file into five
- * statements rather than a thousand.
+ * Rows per `INSERT` when importing. Nine bound columns each (the five domain
+ * fields plus the four sync stamps — see `newTransactionStamp`), so 100 rows is
+ * 900 bound parameters — inside SQLite's limit even if it's the lower, older
+ * one (999), while still turning a thousand-row file into ten statements
+ * rather than a thousand.
  */
-const IMPORT_CHUNK_ROWS = 200;
+const IMPORT_CHUNK_ROWS = 100;
+
+/*
+ * Explicit column lists for reads that hand whole rows to the UI. A bare
+ * `select()` would also return the sync bookkeeping columns (`updated_at`,
+ * `sync_dirty`, …), which are storage-only and deliberately absent from
+ * src/types/domain.ts.
+ */
+const TRANSACTION_COLUMNS = {
+  id: transaction.id,
+  amountMinor: transaction.amountMinor,
+  categoryId: transaction.categoryId,
+  occurredAt: transaction.occurredAt,
+  note: transaction.note,
+};
+
+const BUDGET_COLUMNS = {
+  id: budget.id,
+  categoryId: budget.categoryId,
+  startMonth: budget.startMonth,
+  endMonth: budget.endMonth,
+  limitMinor: budget.limitMinor,
+  createdAt: budget.createdAt,
+};
 
 function newTransactionId(): ID {
   return `t-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function newBudgetId(): ID {
+  return `b-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Matches a budget row with exactly this category and scope. `end_month` is
+ *  nullable, and `= NULL` never matches in SQL, hence the branch. */
+function sameScopeWhere(input: {
+  categoryId: ID;
+  startMonth: Month;
+  endMonth: Month | null;
+}) {
+  return and(
+    eq(budget.categoryId, input.categoryId),
+    eq(budget.startMonth, input.startMonth),
+    input.endMonth === null
+      ? isNull(budget.endMonth)
+      : eq(budget.endMonth, input.endMonth),
+  );
 }
 
 /** Adapts a TanStack `UseMutationResult` to the narrower `MutationResult`
@@ -107,7 +162,6 @@ export function useCategories(): QueryResult<Category[]> {
   return { data, isPending, error };
 }
 
-type Db = ReturnType<typeof useDrizzle>;
 
 /*
  * Month-scoped queries are defined once as option factories so the hooks and
@@ -168,7 +222,7 @@ function transactionsQuery(db: Db, month: Month | null, filters?: TxFilters) {
       }
 
       return db
-        .select()
+        .select(TRANSACTION_COLUMNS)
         .from(transaction)
         .where(and(...conditions))
         .orderBy(desc(transaction.occurredAt))
@@ -329,13 +383,20 @@ function budgetsQuery(db: Db, month: Month) {
         .all();
       const order = new Map(categories.map((c) => [c.id, c.sortOrder]));
 
-      const budgets = db
-        .select()
+      // Every budget whose scope covers this month; several can, and
+      // `effectiveBudgets` keeps the one most specific per category.
+      const covering = db
+        .select(BUDGET_COLUMNS)
         .from(budget)
-        .where(eq(budget.month, month))
+        .where(
+          and(
+            lte(budget.startMonth, month),
+            or(isNull(budget.endMonth), gte(budget.endMonth, month)),
+          ),
+        )
         .all();
 
-      return budgets
+      return effectiveBudgets(covering, month)
         .map((b) => ({ ...b, spentMinor: spent.get(b.categoryId) ?? 0 }))
         .sort(
           (a, b) =>
@@ -345,10 +406,24 @@ function budgetsQuery(db: Db, month: Month) {
   });
 }
 
-/** Budgets for a month joined with actual spend, ordered by category. */
+/** The budget in force for each category in a month, joined with actual
+ *  spend, ordered by category. */
 export function useBudgets(month: Month): QueryResult<BudgetStatus[]> {
   const db = useDrizzle();
   const { data, isPending, error } = useQuery(budgetsQuery(db, month));
+
+  return { data, isPending, error };
+}
+
+/** Every budget row, whatever its scope — for the import preview, which needs
+ *  to know what's already stored to tell a new budget from an update. */
+export function useAllBudgets(): QueryResult<Budget[]> {
+  const db = useDrizzle();
+
+  const { data, isPending, error } = useQuery<Budget[]>({
+    queryKey: ["budget", "all"],
+    queryFn: () => db.select(BUDGET_COLUMNS).from(budget).all(),
+  });
 
   return { data, isPending, error };
 }
@@ -382,8 +457,7 @@ const HOME_PREFETCH: AdjacentMonthPrefetch = {
  * Defaults to what the home screen reads (transactions, summary and budgets);
  * other screens pass their own selection.
  *
- * The next month is skipped once it's in the future — the switcher can't go
- * there, so there's nothing to warm.
+ * For a future neighbour only budgets are warmed — no expense can be there yet.
  */
 export function usePrefetchAdjacentMonths(
   month: Month,
@@ -394,14 +468,16 @@ export function usePrefetchAdjacentMonths(
   const { transactions, summary, budgets, trendMonths } = what;
 
   useEffect(() => {
-    const neighbours = [shiftMonth(month, -1), shiftMonth(month, 1)].filter(
-      (m) => monthRange(m).from <= Date.now(),
-    );
+    const neighbours = [shiftMonth(month, -1), shiftMonth(month, 1)];
 
     for (const m of neighbours) {
+      // Budgets can be set ahead, and the Budgets screen pages into the
+      // future, so they're warmed either way.
+      if (budgets) queryClient.prefetchQuery(budgetsQuery(db, m));
+      // Everything else is about expenses, which a future month can't have.
+      if (monthRange(m).from > Date.now()) continue;
       if (transactions) queryClient.prefetchQuery(transactionsQuery(db, m));
       if (summary) queryClient.prefetchQuery(monthSummaryQuery(db, m));
-      if (budgets) queryClient.prefetchQuery(budgetsQuery(db, m));
       if (trendMonths) {
         queryClient.prefetchQuery(
           monthTrendQuery(db, lastNMonths(trendMonths, m)),
@@ -417,7 +493,11 @@ export function useTransaction(id: ID): QueryResult<Transaction | null> {
   const { data, isPending, error } = useQuery<Transaction | null>({
     queryKey: ["transaction", "one", id],
     queryFn: () =>
-      db.select().from(transaction).where(eq(transaction.id, id)).get() ??
+      db
+        .select(TRANSACTION_COLUMNS)
+        .from(transaction)
+        .where(eq(transaction.id, id))
+        .get() ??
       null,
   });
 
@@ -474,22 +554,38 @@ export function useAddTransaction(): MutationResult<NewTransaction> {
     mutationFn: async (input: NewTransaction) =>
       db
         .insert(transaction)
-        .values({ ...input, id: newTransactionId() })
+        .values({
+          ...input,
+          id: newTransactionId(),
+          ...newTransactionStamp(db),
+        })
         .run(),
-    onSuccess: () => invalidateTransactions(queryClient),
+    onSuccess: () => {
+      invalidateTransactions(queryClient);
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
 }
 
+/** `created_at` / `created_device` are left alone on purpose: they record when
+ *  and where the expense was *entered*, which an edit doesn't change. */
 export function useUpdateTransaction(): MutationResult<TransactionPatch> {
   const db = useDrizzle();
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
     mutationFn: async ({ id, ...patch }: TransactionPatch) =>
-      db.update(transaction).set(patch).where(eq(transaction.id, id)).run(),
-    onSuccess: () => invalidateTransactions(queryClient),
+      db
+        .update(transaction)
+        .set({ ...patch, ...editStamp() })
+        .where(eq(transaction.id, id))
+        .run(),
+    onSuccess: () => {
+      invalidateTransactions(queryClient);
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
@@ -501,42 +597,133 @@ export function useDeleteTransaction(): MutationResult<ID> {
 
   const mutation = useMutation({
     mutationFn: async (id: ID) =>
-      db.delete(transaction).where(eq(transaction.id, id)).run(),
-    onSuccess: () => invalidateTransactions(queryClient),
+      db.transaction((tx) => {
+        tx.delete(transaction).where(eq(transaction.id, id)).run();
+        recordDeletions(tx, "transaction", [id]);
+      }),
+    onSuccess: () => {
+      invalidateTransactions(queryClient);
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
 }
 
-/** Upsert-or-delete: a limit of 0 or less removes the budget row, matching the
- *  mock store's semantics. */
-export function useUpsertBudget(): MutationResult<Budget> {
+/**
+ * Creates or edits a budget. See `BudgetInput` for how the target row is found.
+ * A limit of 0 or less deletes it instead.
+ */
+export function useUpsertBudget(): MutationResult<BudgetInput> {
   const db = useDrizzle();
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async (input: Budget) => {
-      if (input.limitMinor <= 0) {
-        return db
-          .delete(budget)
-          .where(
-            and(
-              eq(budget.categoryId, input.categoryId),
-              eq(budget.month, input.month),
-            ),
-          )
+    mutationFn: async ({ id, ...input }: BudgetInput) =>
+      db.transaction((tx) => {
+        if (id) {
+          if (input.limitMinor <= 0) {
+            tx.delete(budget).where(eq(budget.id, id)).run();
+            recordDeletions(tx, "budget", [id]);
+            return;
+          }
+          tx.update(budget)
+            .set({ ...input, ...editStamp() })
+            .where(eq(budget.id, id))
+            .run();
+          return;
+        }
+
+        if (input.limitMinor <= 0) {
+          // Ids first: the tombstones need to name what's being deleted.
+          const doomed = tx
+            .select({ id: budget.id })
+            .from(budget)
+            .where(sameScopeWhere(input))
+            .all()
+            .map((row) => row.id);
+          tx.delete(budget).where(sameScopeWhere(input)).run();
+          recordDeletions(tx, "budget", doomed);
+          return;
+        }
+
+        const existing = tx
+          .select({ id: budget.id })
+          .from(budget)
+          .where(sameScopeWhere(input))
+          .get();
+        if (existing) {
+          // Re-saving counts as the latest save, so it takes precedence over
+          // anything overlapping — see `src/lib/budget-scope.ts`.
+          tx.update(budget)
+            .set({
+              limitMinor: input.limitMinor,
+              createdAt: Date.now(),
+              ...editStamp(),
+            })
+            .where(eq(budget.id, existing.id))
+            .run();
+          return;
+        }
+        tx.insert(budget)
+          .values({
+            ...input,
+            id: newBudgetId(),
+            createdAt: Date.now(),
+            ...editStamp(),
+          })
           .run();
-      }
-      return db
-        .insert(budget)
-        .values(input)
-        .onConflictDoUpdate({
-          target: [budget.categoryId, budget.month],
-          set: { limitMinor: input.limitMinor },
-        })
-        .run();
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget"] });
+      notifyLocalChange();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budget"] }),
+  });
+
+  return toMutationResult(mutation);
+}
+
+/**
+ * Deletes a budget outright, or — with `onlyMonth` — cuts that one month out
+ * of it, leaving the months either side still budgeted. The cut is a delete
+ * plus up to two inserts in one transaction, so a failure can't leave the
+ * budget half-split.
+ */
+export function useDeleteBudget(): MutationResult<BudgetDeletion> {
+  const db = useDrizzle();
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async ({ id, onlyMonth }: BudgetDeletion) =>
+      db.transaction((tx) => {
+        const row = tx.select().from(budget).where(eq(budget.id, id)).get();
+        if (!row) return;
+
+        tx.delete(budget).where(eq(budget.id, id)).run();
+        // The original id is gone either way — a split replaces it with new
+        // rows rather than editing it — so other devices must drop it too.
+        recordDeletions(tx, "budget", [id]);
+        if (!onlyMonth) return;
+
+        for (const scope of withoutMonth(row, onlyMonth)) {
+          tx.insert(budget)
+            .values({
+              ...scope,
+              id: newBudgetId(),
+              categoryId: row.categoryId,
+              limitMinor: row.limitMinor,
+              // Kept, not refreshed: the pieces are the same budget as before
+              // and shouldn't start winning ties it used to lose.
+              createdAt: row.createdAt,
+              ...editStamp(),
+            })
+            .run();
+        }
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget"] });
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
@@ -544,28 +731,49 @@ export function useUpsertBudget(): MutationResult<Budget> {
 
 /**
  * Writes many budgets in one transaction, replacing the limit wherever a
- * category already has a budget for that month. Unlike `useUpsertBudget`, a
- * zero limit is not treated as a delete — this is for bulk loads (sample data),
- * where every row is meant to exist.
+ * budget with the same category and scope already exists. Unlike
+ * `useUpsertBudget`, a zero limit is not treated as a delete — this is for
+ * bulk loads (sample data), where every row is meant to exist.
  */
-export function useUpsertBudgets(): MutationResult<Budget[]> {
+export function useUpsertBudgets(): MutationResult<NewBudget[]> {
   const db = useDrizzle();
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async (input: Budget[]) =>
+    mutationFn: async (input: NewBudget[]) =>
       db.transaction((tx) => {
-        for (const row of input) {
-          tx.insert(budget)
-            .values(row)
-            .onConflictDoUpdate({
-              target: [budget.categoryId, budget.month],
-              set: { limitMinor: row.limitMinor },
-            })
-            .run();
-        }
+        const now = Date.now();
+        input.forEach((row, index) => {
+          const existing = tx
+            .select({ id: budget.id })
+            .from(budget)
+            .where(sameScopeWhere(row))
+            .get();
+          if (existing) {
+            tx.update(budget)
+              .set({
+                limitMinor: row.limitMinor,
+                createdAt: now + index,
+                ...editStamp(),
+              })
+              .where(eq(budget.id, existing.id))
+              .run();
+          } else {
+            tx.insert(budget)
+              .values({
+                ...row,
+                id: newBudgetId(),
+                createdAt: now + index,
+                ...editStamp(),
+              })
+              .run();
+          }
+        });
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budget"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget"] });
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
@@ -585,13 +793,36 @@ export function useClearAllData(): MutationResult<void> {
   const mutation = useMutation({
     mutationFn: async () =>
       db.transaction((tx) => {
+        // Tombstoned like any other delete, so once sync exists a clear
+        // reaches the user's other devices too (where the mass-change brake,
+        // design §11.3, asks before applying it).
+        const ids = (rows: { id: ID }[]) => rows.map((row) => row.id);
+        const budgetIds = ids(tx.select({ id: budget.id }).from(budget).all());
+        const transactionIds = ids(
+          tx.select({ id: transaction.id }).from(transaction).all(),
+        );
+        const categoryIds = ids(
+          tx
+            .select({ id: category.id })
+            .from(category)
+            .where(eq(category.isDefault, false))
+            .all(),
+        );
+
         // Budgets and transactions first: both reference categories.
         tx.delete(budget).run();
         tx.delete(transaction).run();
         tx.delete(category).where(eq(category.isDefault, false)).run();
+
+        recordDeletions(tx, "budget", budgetIds);
+        recordDeletions(tx, "transaction", transactionIds);
+        recordDeletions(tx, "category", categoryIds);
       }),
     // Everything cached is now wrong, so drop all of it rather than listing keys.
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      notifyLocalChange();
+    },
   });
 
   return toMutationResult(mutation);
@@ -602,10 +833,11 @@ export function useUpsertCategory(): MutationResult<Category> {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async (input: Category) =>
-      db
+    mutationFn: async (input: Category) => {
+      const stamp = editStamp();
+      return db
         .insert(category)
-        .values(input)
+        .values({ ...input, ...stamp })
         .onConflictDoUpdate({
           target: category.id,
           set: {
@@ -613,10 +845,13 @@ export function useUpsertCategory(): MutationResult<Category> {
             icon: input.icon,
             color: input.color,
             sortOrder: input.sortOrder,
+            ...stamp,
           },
         })
-        .run(),
+        .run();
+    },
     onSuccess: () => {
+      notifyLocalChange();
       queryClient.invalidateQueries({ queryKey: ["category"] });
       // Not ['transaction']: transaction rows only ever store a categoryId —
       // every consumer joins name/icon/color client-side against `useCategories`,
@@ -654,10 +889,21 @@ export function useDeleteCategory(): MutationResult<ID> {
   const mutation = useMutation({
     mutationFn: async (id: ID) =>
       db.transaction((tx) => {
+        const budgetIds = tx
+          .select({ id: budget.id })
+          .from(budget)
+          .where(eq(budget.categoryId, id))
+          .all()
+          .map((row) => row.id);
         tx.delete(budget).where(eq(budget.categoryId, id)).run();
-        return tx.delete(category).where(eq(category.id, id)).run();
+        tx.delete(category).where(eq(category.id, id)).run();
+        // After both deletes: if either aborts (FK, default-category trigger),
+        // the whole transaction rolls back and no tombstone is left behind.
+        recordDeletions(tx, "budget", budgetIds);
+        recordDeletions(tx, "category", [id]);
       }),
     onSuccess: () => {
+      notifyLocalChange();
       queryClient.invalidateQueries({ queryKey: ["category"] });
       // ['budget'] because rows were actually removed here, not just for the
       // sortOrder reason useUpsertCategory invalidates it for. Transaction keys
@@ -671,7 +917,7 @@ export function useDeleteCategory(): MutationResult<ID> {
 }
 
 /**
- * Writes a whole CSV import in one database transaction.
+ * Writes a whole CSV import — expenses and budgets — in one database transaction.
  *
  * All or nothing on purpose. A half-applied import is the worst possible
  * outcome here: there's no undo in this app, and "some of my file is in there
@@ -690,24 +936,68 @@ export function useImportTransactions(): MutationResult<ImportRequest> {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async ({ categories, transactions }: ImportRequest) =>
+    mutationFn: async ({ categories, transactions, budgets }: ImportRequest) =>
       db.transaction((tx) => {
         for (const row of categories) {
-          tx.insert(category).values(row).onConflictDoNothing().run();
+          tx.insert(category)
+            .values({ ...row, ...editStamp() })
+            .onConflictDoNothing()
+            .run();
         }
 
-        // Chunked because every row contributes four bound parameters and a
+        // Chunked because every row contributes nine bound parameters and a
         // multi-thousand-row file would otherwise blow SQLite's variable limit
-        // in a single statement.
+        // in a single statement. Each row gets its own stamp: `created_at`
+        // marks the import moment, which is also what lets the same file
+        // imported on two phones collapse to one copy (design §12.10).
         for (let i = 0; i < transactions.length; i += IMPORT_CHUNK_ROWS) {
           const chunk = transactions
             .slice(i, i + IMPORT_CHUNK_ROWS)
-            .map((input) => ({ ...input, id: newTransactionId() }));
+            .map((input) => ({
+              ...input,
+              id: newTransactionId(),
+              ...newTransactionStamp(tx),
+            }));
           tx.insert(transaction).values(chunk).run();
         }
+
+        // Same upsert rule as `useUpsertBudget`: an identical category + scope
+        // takes the file's limit instead of gaining a duplicate. Few enough
+        // rows that one statement each is fine.
+        const now = Date.now();
+        budgets.forEach((input, index) => {
+          const existing = tx
+            .select({ id: budget.id })
+            .from(budget)
+            .where(sameScopeWhere(input))
+            .get();
+          if (existing) {
+            tx.update(budget)
+              .set({
+                limitMinor: input.limitMinor,
+                createdAt: now + index,
+                ...editStamp(),
+              })
+              .where(eq(budget.id, existing.id))
+              .run();
+          } else {
+            // Offset by position so later rows in the file win ties, the
+            // same as if they'd been added one after another by hand.
+            tx.insert(budget)
+              .values({
+                ...input,
+                id: newBudgetId(),
+                createdAt: now + index,
+                ...editStamp(),
+              })
+              .run();
+          }
+        });
       }),
     onSuccess: () => {
+      notifyLocalChange();
       invalidateTransactions(queryClient);
+      // (`invalidateTransactions` already covers ['budget'].)
       // Unlike every other transaction write, an import can create categories
       // too — without this the new ones render as "Uncategorised" until
       // something else happens to refetch them.
@@ -750,8 +1040,13 @@ export function useSetSetting(): MutationResult<{
 // --- one-shot ---------------------------------------------------------------
 
 /**
- * Whole-ledger CSV. Amounts are written as decimal rupees because that's what a
- * spreadsheet expects; everything internal stays in paise.
+ * Whole-ledger CSV: every expense, then — if there are any — every budget as a
+ * second table underneath, separated by a blank row. Amounts are written as
+ * decimal rupees because that's what a spreadsheet expects; everything internal
+ * stays in paise.
+ *
+ * The column names of both tables are what `parseLedgerCsv` reads back — see
+ * `BUDGET_SECTION_MARKER` and the header aliases there before renaming one.
  */
 export async function exportAllData(): Promise<string> {
   const handle = openDatabaseSync(DATABASE_NAME);
@@ -764,23 +1059,46 @@ export async function exportAllData(): Promise<string> {
       .from(transaction)
       .orderBy(transaction.occurredAt)
       .all();
+    const budgets = db
+      .select()
+      .from(budget)
+      .orderBy(budget.startMonth, budget.createdAt)
+      .all();
     const categories = db.select().from(category).all();
-    const nameOf = (id: ID) => categories.find((c) => c.id === id)?.name ?? "";
+    const names = new Map(categories.map((c) => [c.id, c.name]));
+    const nameOf = (id: ID) => names.get(id) ?? "";
 
     const { formatAmountExact, formatISODate } = await import("@/lib/format");
 
-    const rows = transactions.map((tx) =>
-      formatCsvRow([
-        formatISODate(tx.occurredAt),
-        nameOf(tx.categoryId),
-        formatAmountExact(tx.amountMinor),
-        tx.note ?? "",
-      ]),
-    );
+    const lines = [
+      formatCsvRow(["Date", "Category", "Amount", "Note"]),
+      ...transactions.map((tx) =>
+        formatCsvRow([
+          formatISODate(tx.occurredAt),
+          nameOf(tx.categoryId),
+          formatAmountExact(tx.amountMinor),
+          tx.note ?? "",
+        ]),
+      ),
+    ];
 
-    // These four column names, in this order, are what `parseLedgerCsv` reads
-    // back — see the header aliases there before renaming one.
-    return [formatCsvRow(["Date", "Category", "Amount", "Note"]), ...rows].join("\n");
+    if (budgets.length > 0) {
+      lines.push(
+        "",
+        // An empty "To" means every month from "From" onwards.
+        formatCsvRow(["Budget Category", "Monthly Limit", "From", "To"]),
+        ...budgets.map((b) =>
+          formatCsvRow([
+            nameOf(b.categoryId),
+            formatAmountExact(b.limitMinor),
+            b.startMonth,
+            b.endMonth ?? "",
+          ]),
+        ),
+      );
+    }
+
+    return lines.join("\n");
   } finally {
     handle.closeSync();
   }
