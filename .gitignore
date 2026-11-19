@@ -45,3 +45,6 @@ app-example
 
 # local Expo modules build output
 modules/*/android/build/
+
+# local build output
+/builds/
