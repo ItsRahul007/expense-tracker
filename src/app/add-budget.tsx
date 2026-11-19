@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
+import { useSheetScroll } from "@/hooks/use-sheet-scroll";
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
 import { Button, Card, Chip, MonthSwitcher } from "@/components/ui";
@@ -62,6 +63,7 @@ export default function AddBudgetScreen() {
   }, [navigation, creatingCategory]);
 
   const keyboard = useKeyboardInset();
+  const scroll = useSheetScroll();
   const categoryId = chosenCategory ?? categories?.[0]?.id ?? null;
   const limitMinor = Number(draft.replace(/\D/g, "")) * 100;
   const canSave = categoryId !== null && limitMinor > 0;
@@ -89,10 +91,15 @@ export default function AddBudgetScreen() {
 
       <View ref={keyboard.ref} onLayout={keyboard.onLayout} className="flex-1">
         <ScrollView
-          // Android: lets the sheet hand the drag to the ScrollView first, so
-          // swiping down scrolls back up instead of dragging the sheet closed.
+          // Drag-down closes the sheet whether or not the form scrolls (see
+          // useSheetScroll for why the content is kept 1 px taller).
           nestedScrollEnabled
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          onLayout={scroll.onLayout}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingBottom: 24,
+            minHeight: scroll.contentMinHeight,
+          }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >

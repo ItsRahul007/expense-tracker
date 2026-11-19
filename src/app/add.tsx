@@ -11,6 +11,7 @@ import {
 } from "react-native";
 
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
+import { useSheetScroll } from "@/hooks/use-sheet-scroll";
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
 import { Button, Card, Chip, DatePickerDialog } from "@/components/ui";
@@ -55,6 +56,7 @@ export default function AddScreen() {
   const [note, setNote] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
   const keyboard = useKeyboardInset();
+  const scroll = useSheetScroll();
 
   /** Defaults to the last category used, which is right far more often than
    *  alphabetical order — it makes the common case a two-field form. */
@@ -95,10 +97,15 @@ export default function AddScreen() {
           className="flex-1"
         >
           <ScrollView
-            // Android: lets the sheet hand the drag to the ScrollView first, so
-            // swiping down scrolls back up instead of dragging the sheet closed.
+            // Drag-down closes the sheet whether or not the form scrolls (see
+            // useSheetScroll for why the content is kept 1 px taller).
             nestedScrollEnabled
-            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+            onLayout={scroll.onLayout}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingBottom: 24,
+              minHeight: scroll.contentMinHeight,
+            }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
