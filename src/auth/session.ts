@@ -4,6 +4,7 @@
  * guards read it synchronously — no network, no Google SDK — which is what lets
  * a signed-in user open the app offline without ever seeing the sign-in screen.
  */
+import { wipeLocalData } from "@/sync/local-repo";
 import { clearStates, getState, setStates, type SyncStateKey } from "@/sync/state";
 import type { Db } from "@/queries/helper";
 
@@ -88,9 +89,37 @@ export function finishBootstrap(db: Store, options: { restorePending: boolean })
 }
 
 /**
- * Ends the session. Local data, the owner and the sheet link stay — signing
- * back in with the same account picks up exactly where it left off (§7.6).
+ * Ends the session only. Local data, the owner and the sheet link stay. Used
+ * when sign-in has to start over (e.g. Google asked to sign in again during
+ * restore). The user-facing Sign out is `signOutAndClear`.
  */
 export function endSession(db: Store): void {
   clearStates(db, SESSION_KEYS);
+}
+
+/** Everything that ties this phone to an account and its sheet. Device-local
+ *  preferences (device id, auto-sync, duplicate merging, export folder) stay. */
+const ACCOUNT_KEYS: SyncStateKey[] = [
+  ...SESSION_KEYS,
+  "owner_user_id",
+  "owner_email",
+  "bootstrap",
+  "restore_pending",
+  "spreadsheet_id",
+  "last_sync_at",
+  "last_remote_version",
+  "last_error",
+  "pending_review",
+];
+
+/**
+ * Sign out: removes this phone's copy of the data and every link to the
+ * account. The caller must have confirmed that everything is uploaded first
+ * (countUnsynced === 0) — this function doesn't check, and writes no
+ * tombstones, so nothing is deleted from the sheet or other devices. Signing in
+ * again (with any account) restores from that account's sheet.
+ */
+export function signOutAndClear(db: Store & Pick<Db, "update" | "transaction">): void {
+  wipeLocalData(db, { force: true });
+  clearStates(db, ACCOUNT_KEYS);
 }

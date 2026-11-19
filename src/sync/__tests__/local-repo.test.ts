@@ -7,7 +7,14 @@ import { eq } from "drizzle-orm";
 
 import { resetClockForTests } from "../clock";
 import { diffPlan } from "../merge";
-import { applyPlan, countUnsynced, readLocal, wipeLocalData } from "../local-repo";
+import {
+  applyPlan,
+  countUnsynced,
+  countUserData,
+  hasUserData,
+  readLocal,
+  wipeLocalData,
+} from "../local-repo";
 import { buildPlan, needsConfirmation } from "../plan";
 import { resetDeviceIdForTests } from "../tracking";
 import type { Dataset, TransactionRecord } from "../types";
@@ -206,5 +213,26 @@ describe("wipeLocalData", () => {
     expect(db.select().from(transaction).all()).toEqual([]);
     expect(db.select().from(tombstone).all()).toEqual([]);
     expect(db.select().from(category).all()).toHaveLength(8);
+  });
+});
+
+describe("unlinked data (upgrading from the account-less app)", () => {
+  it("counts only what the user added — seeded defaults don't count", () => {
+    const { db } = createTestDb();
+    expect(countUserData(db)).toEqual({ expenses: 0, budgets: 0, categories: 0 });
+    expect(hasUserData(countUserData(db))).toBe(false);
+
+    insertLocal(db, tx("t-1"));
+    expect(countUserData(db)).toEqual({ expenses: 1, budgets: 0, categories: 0 });
+    expect(hasUserData(countUserData(db))).toBe(true);
+  });
+
+  it("a forced wipe removes never-synced data, without tombstones", () => {
+    const { db } = createTestDb();
+    insertLocal(db, tx("t-1")); // dirty: never uploaded
+    expect(wipeLocalData(db)).toEqual({ ok: false, unsynced: expect.any(Number) });
+    expect(wipeLocalData(db, { force: true })).toEqual({ ok: true });
+    expect(db.select().from(transaction).all()).toEqual([]);
+    expect(db.select().from(tombstone).all()).toEqual([]);
   });
 });

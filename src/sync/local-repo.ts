@@ -103,9 +103,19 @@ export function readLocal(db: Store): Dataset {
  * should hear about, only this phone letting go of its copy. Refuses while
  * anything is still unsynced, so it can never destroy the only copy.
  */
-export function wipeLocalData(db: Store): { ok: true } | { ok: false; unsynced: number } {
+export function wipeLocalData(
+  db: Store,
+  options: {
+    /**
+     * Skip the "everything is synced" check. Only for data the user has
+     * explicitly chosen to delete (or has just exported) — e.g. pre-sign-in
+     * data they declined to link to their account.
+     */
+    force?: boolean;
+  } = {},
+): { ok: true } | { ok: false; unsynced: number } {
   const unsynced = countUnsynced(db);
-  if (unsynced > 0) return { ok: false, unsynced };
+  if (unsynced > 0 && !options.force) return { ok: false, unsynced };
   db.transaction((tx) => {
     tx.delete(budget).run();
     tx.delete(transaction).run();
@@ -116,6 +126,21 @@ export function wipeLocalData(db: Store): { ok: true } | { ok: false; unsynced: 
   });
   return { ok: true };
 }
+
+export type UserDataCounts = { expenses: number; budgets: number; categories: number };
+
+/** What the user has put on this phone: expenses, budgets, custom categories
+ *  (the seeded defaults don't count). */
+export function countUserData(db: Store): UserDataCounts {
+  const n = (rows: { n: number }[]) => rows[0]?.n ?? 0;
+  return {
+    expenses: n(db.select({ n: count() }).from(transaction).all()),
+    budgets: n(db.select({ n: count() }).from(budget).all()),
+    categories: n(db.select({ n: count() }).from(category).where(eq(category.isDefault, false)).all()),
+  };
+}
+
+export const hasUserData = (c: UserDataCounts) => c.expenses + c.budgets + c.categories > 0;
 
 /** Rows, tombstones and exceptions changed here and not yet seen in the sheet. */
 export function countUnsynced(db: Store): number {

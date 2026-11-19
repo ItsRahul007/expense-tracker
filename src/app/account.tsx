@@ -4,12 +4,13 @@
  */
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useState } from "react";
 import { Linking, ScrollView, Text, View } from "react-native";
 
 import { requestDriveAccess, signIn, signOutOfGoogle } from "@/auth/google";
-import { endSession } from "@/auth/session";
+import { signOutAndClear } from "@/auth/session";
 import { Button, Card, ScreenHeader, SectionTitle, SettingsRow, Toggle } from "@/components/ui";
 import { showSheet } from "@/lib/sheet";
 import { usePalette } from "@/constants/palette";
@@ -29,6 +30,7 @@ export default function AccountScreen() {
   const sync = useSync();
   const { status } = sync;
   const [signingOut, setSigningOut] = useState(false);
+  const queryClient = useQueryClient();
   const user = session.user;
 
   const reconnect = async () => {
@@ -94,34 +96,63 @@ export default function AccountScreen() {
     }
   })();
 
-  const signOut = async () => {
+  /**
+   * Sign out = back everything up, then clear this phone. Nothing is removed
+   * unless the sheet has confirmed every change (0 waiting); otherwise the
+   * user is told why and stays signed in.
+   */
+  const signOut = () => {
+    showSheet(
+      "Sign out?",
+      "Your expenses will be backed up to your Google Sheet first, then removed from this phone. Signing in again brings them back.",
+      [
+        { text: "Sign out", style: "destructive", onPress: () => void backUpThenSignOut(false) },
+        {
+          text: "Sign out and remove access",
+          style: "destructive",
+          onPress: () => void backUpThenSignOut(true),
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+    );
+  };
+
+  const backUpThenSignOut = async (revoke: boolean) => {
     setSigningOut(true);
+    let outcome: Awaited<ReturnType<typeof sync.syncNow>> = null;
     try {
-      await sync.syncNow();
+      outcome = await sync.syncNow();
     } catch {
-      // Offline etc. — handled by the unsynced check below.
+      // Reported through the checks below.
     }
     const waiting = countUnsynced(db);
-    const finish = async (revoke: boolean) => {
-      await signOutOfGoogle({ revoke });
-      endSession(db);
-      refresh();
-    };
-
     setSigningOut(false);
-    const message =
-      waiting > 0
-        ? `${waiting} change${waiting === 1 ? "" : "s"} haven't been backed up yet. They'll stay safe on this phone and upload next time you sign in with ${user?.email ?? "this account"}.`
-        : "Your expenses stay on this phone and in your Google Sheet.";
-    showSheet("Sign out?", message, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: () => void finish(false) },
-      {
-        text: "Sign out and remove access",
-        style: "destructive",
-        onPress: () => void finish(true),
-      },
-    ]);
+
+    if (outcome?.status === "needs_confirmation") {
+      showSheet(
+        "Can’t sign out yet",
+        "Another device made a big change that needs your review first. Review it on this screen, then sign out.",
+      );
+      return;
+    }
+    if (waiting > 0 || outcome?.status === "error") {
+      const reason =
+        outcome?.status === "error" && outcome.error.code === "offline"
+          ? "You’re offline."
+          : outcome?.status === "error"
+            ? `The backup didn’t finish (${outcome.error.message}).`
+            : "The backup didn’t finish.";
+      showSheet(
+        "Can’t sign out yet",
+        `${reason} ${waiting} change${waiting === 1 ? " isn’t" : "s aren’t"} backed up, and signing out would remove ${waiting === 1 ? "it" : "them"} from this phone. Nothing has been removed — connect to the internet and try again.`,
+      );
+      return;
+    }
+
+    await signOutOfGoogle({ revoke });
+    signOutAndClear(db);
+    queryClient.invalidateQueries();
+    refresh(); // the route guard moves to the sign-in screen
   };
 
   const openSheet = () => {
