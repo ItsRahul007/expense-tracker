@@ -14,6 +14,9 @@
 - After every upload, `syncOnce` does one read-back pass, so uploaded rows are confirmed (marked clean) in the same sync.
 - Duplicate merges version their results from the rows involved (`max(updated_at) + 1`, tombstone device `dedupe`), never the clock, so every device produces identical output.
 - Development builds can "Skip for now" on the sign-in screen while Google isn't configured. This is held in memory and never shipped.
+- **P7 changed (2026-11-19, at the user's request):** Sign out first syncs, and only proceeds when every change is confirmed in the sheet (0 waiting). It then clears the phone's data and all account links, with no tombstones, so signing in again restores from the sheet. If anything is unsynced (offline, error, pending review), sign-out is refused and nothing is removed.
+- **Upgrading from the account-less app:** after Google sign-in, data not linked to any account triggers "sync it with <email>?". Yes merges and uploads it. No offers Export (CSV to Download/expense, then remove) or Delete (confirmed). Nothing happens until the user chooses.
+- CSV export (Settings and the flow above) saves to Download/expense through the local `modules/downloads-saver` module (MediaStore: no permission, no prompt), never the share sheet.
 - Code map: `src/sync/*` (engine, merge, dedupe, sheet format, clients), `src/auth/*` (sign-in, session), `src/providers/{session,sync}-provider.tsx`, screens `src/app/{sign-in,restore,account}.tsx`, `src/components/sync-notices.tsx`.
 
 **v2 changes:** sign-in is now mandatory and survives offline cold starts (§7). Reinstall restores *before* the app opens (§8). Explicit "the phone's data is never lost" guarantees (§3, §11). Cross-device duplicate detection (§12). The backup-only mode and every "replace this device's data" option from v1 are removed.
