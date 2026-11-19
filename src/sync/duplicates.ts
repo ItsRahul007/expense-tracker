@@ -27,14 +27,16 @@ function addException(db: Pick<Db, "insert">, a: ID, b: ID): void {
 /**
  * Undo an automatic merge: bring the duplicate back exactly as it was (from
  * `row_history`, or the row the merge reported if it came from another phone),
- * newer than its tombstone, and remember the pair as distinct. Returns false
- * if there's nothing to restore.
+ * newer than its tombstone, and remember the pair as distinct. The kept
+ * expense gets its own note back if it adopted the duplicate's and hasn't been
+ * edited since. Returns false if there's nothing to restore.
  */
 export function undoMerge(
   db: Store,
   survivorId: ID,
   duplicateId: ID,
   reportedRow?: TransactionRecord,
+  survivorBefore?: TransactionRecord,
 ): boolean {
   return db.transaction((tx) => {
     const saved = tx
@@ -55,6 +57,22 @@ export function undoMerge(
       .onConflictDoNothing()
       .run();
     addException(tx, survivorId, duplicateId);
+
+    // Only while the note is still exactly the one adopted from the duplicate:
+    // a note edited after the merge is the user's and stays.
+    if (survivorBefore) {
+      const current = tx
+        .select({ note: transaction.note })
+        .from(transaction)
+        .where(eq(transaction.id, survivorId))
+        .get();
+      if (current && current.note !== survivorBefore.note && current.note === row.note) {
+        tx.update(transaction)
+          .set({ note: survivorBefore.note, updatedAt: nextStamp(), syncDirty: true })
+          .where(eq(transaction.id, survivorId))
+          .run();
+      }
+    }
     return true;
   });
 }

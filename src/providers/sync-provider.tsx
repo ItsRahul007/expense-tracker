@@ -258,7 +258,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       applyReviewedChanges: () => run(() => engine.syncOnce({ confirmMassChange: true })),
       keepLocalRows: () => run(() => engine.keepLocalRows()),
       undoMerges: () => {
-        for (const merge of status.recentMerges) undoMerge(db, merge.survivor, merge.duplicate, merge.row);
+        for (const merge of status.recentMerges) {
+          undoMerge(db, merge.survivor, merge.duplicate, merge.row, merge.survivorBefore);
+        }
         setStatus((s) => ({ ...s, recentMerges: [] }));
         queryClient.invalidateQueries();
         void syncNow();

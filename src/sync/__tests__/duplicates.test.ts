@@ -2,6 +2,7 @@
  * @jest-environment node
  */
 import { dedupeException, syncState, tombstone, transaction } from "@/db/schema/schema";
+import { eq } from "drizzle-orm";
 import { FakeGoogle } from "@/test-utils/fake-google";
 import { createTestDb } from "@/test-utils/sqlite";
 
@@ -59,6 +60,49 @@ describe("undoMerge", () => {
       expect(p.db.select().from(transaction).all().map((t) => t.id).sort()).toEqual([mine, theirs].sort());
       expect(p.db.select().from(dedupeException).all()).toHaveLength(1);
     }
+  });
+
+  it("also gives the kept expense its own note back (it had adopted the duplicate's)", async () => {
+    const google = new FakeGoogle();
+    const a = phone(google, "d-a");
+    const b = phone(google, "d-b");
+    await a.connect();
+    await b.connect();
+
+    const mine = a.add({ note: null });
+    await a.sync();
+    const theirs = b.add({ note: "Snacks" });
+    const outcome = await b.sync();
+    if (outcome.status !== "synced") throw new Error(outcome.status);
+    const merge = outcome.merges[0];
+    const noteOf = (id: string) => b.db.select().from(transaction).all().find((t) => t.id === id)?.note;
+    expect(noteOf(mine)).toBe("Snacks"); // adopted during the merge
+
+    expect(undoMerge(b.db, merge.survivor, merge.duplicate, merge.row, merge.survivorBefore)).toBe(true);
+    expect(noteOf(mine)).toBeNull();
+    expect(noteOf(theirs)).toBe("Snacks");
+
+    await b.sync();
+    await a.sync();
+    expect(a.db.select().from(transaction).all().find((t) => t.id === mine)?.note).toBeNull();
+  });
+
+  it("leaves the kept expense alone if its note was edited after the merge", async () => {
+    const google = new FakeGoogle();
+    const a = phone(google, "d-a");
+    const b = phone(google, "d-b");
+    await a.connect();
+    await b.connect();
+    const mine = a.add({ note: null });
+    await a.sync();
+    b.add({ note: "Snacks" });
+    const outcome = await b.sync();
+    if (outcome.status !== "synced") throw new Error(outcome.status);
+    const merge = outcome.merges[0];
+
+    b.db.update(transaction).set({ note: "Edited later" }).where(eq(transaction.id, mine)).run();
+    undoMerge(b.db, merge.survivor, merge.duplicate, merge.row, merge.survivorBefore);
+    expect(b.db.select().from(transaction).all().find((t) => t.id === mine)?.note).toBe("Edited later");
   });
 
   it("restores a duplicate that arrived from another phone (no local history)", async () => {
