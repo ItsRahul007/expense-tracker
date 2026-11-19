@@ -39,7 +39,16 @@ export function SettingsRow({
           {label}
         </Text>
         {value ? (
-          <Text className="font-sans text-body text-muted">{value}</Text>
+          <Text
+            // Re-mount when the value changes: Android can keep a changed
+            // Text's old measured width ("3 min ago" → "just now") and clip
+            // the last word. One line, never shrunk — the label gives way.
+            key={value}
+            numberOfLines={1}
+            className="font-sans shrink-0 text-body text-muted"
+          >
+            {value}
+          </Text>
         ) : null}
         {onPress ? (
           <Ionicons name="chevron-forward" size={16} color={palette.muted} />

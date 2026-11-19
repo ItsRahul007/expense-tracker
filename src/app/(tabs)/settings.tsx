@@ -4,6 +4,7 @@ import * as Sharing from "expo-sharing";
 import { useState } from "react";
 import { Alert, Platform, ScrollView, Text, View } from "react-native";
 
+import { AccountRow } from "@/components/account-row";
 import { Card, Chip, ScreenHeader, SectionTitle, SettingsRow } from "@/components/ui";
 import { backupSummary } from "@/lib/backup-status";
 import { formatISODate } from "@/lib/format";
@@ -92,12 +93,16 @@ export default function SettingsScreen() {
           <View className="mb-6">
             <SectionTitle title="Account" />
             <Card padded={false} className="overflow-hidden">
-              <SettingsRow
-                icon={backup.lastError && backup.lastError.code !== "offline" ? "alert-circle-outline" : "person-circle-outline"}
-                label={session.user?.email ?? "Google account"}
-                value={backupSummary(backup)}
+              <AccountRow
+                email={session.user?.email ?? "Google account"}
+                name={session.user?.name ?? null}
+                photo={session.user?.photo ?? null}
+                status={backupSummary(backup)}
+                needsAttention={
+                  !!backup.pendingReview ||
+                  (!!backup.lastError && !["offline", "rate_limited", "server"].includes(backup.lastError.code))
+                }
                 onPress={() => router.push("/account")}
-                showSeparator={false}
               />
             </Card>
           </View>
