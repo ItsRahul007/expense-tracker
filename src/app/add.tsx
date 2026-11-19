@@ -83,7 +83,7 @@ export default function AddScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={100}
     >
-      <View className="flex-1 bg-bg">
+      <View className="flex-1 bg-sheet dark:border-t dark:border-border">
         <View className="flex-row items-center justify-between px-4 pb-2 pt-4">
           <Text className="font-sans-bold text-title text-fg">New expense</Text>
           <View />

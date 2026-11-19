@@ -49,7 +49,7 @@ export default function SheetScreen() {
   };
 
   return (
-    <View className="bg-bg px-5 pt-6" style={{ paddingBottom: insets.bottom + 16 }}>
+    <View className="bg-sheet dark:border-t dark:border-border px-5 pt-6" style={{ paddingBottom: insets.bottom + 16 }}>
       <Text className="font-sans-bold text-title text-fg">{request.title}</Text>
       {request.message ? (
         <Text className="font-sans mt-2 text-body text-muted">{request.message}</Text>

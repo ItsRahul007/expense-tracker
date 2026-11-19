@@ -150,6 +150,7 @@ function RootNavigator() {
             name="add"
             options={{
               presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
               sheetGrabberVisible: true,
               sheetCornerRadius: 24,
               // Nearly full height: the form has an amount field, a category
@@ -162,6 +163,7 @@ function RootNavigator() {
             name="add-budget"
             options={{
               presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
               sheetGrabberVisible: true,
               sheetCornerRadius: 24,
               // Taller than it was: the form now also asks which months the
@@ -173,6 +175,7 @@ function RootNavigator() {
             name="delete-budget"
             options={{
               presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
               sheetGrabberVisible: true,
               sheetCornerRadius: 24,
               // Just an icon, a line of text and two or three buttons — a small
@@ -184,6 +187,7 @@ function RootNavigator() {
             name="delete-transaction"
             options={{
               presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
               sheetGrabberVisible: true,
               sheetCornerRadius: 24,
               sheetAllowedDetents: [0.3],
@@ -193,6 +197,7 @@ function RootNavigator() {
             name="delete-category"
             options={{
               presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
               sheetGrabberVisible: true,
               sheetCornerRadius: 24,
               sheetAllowedDetents: [0.35],
@@ -213,6 +218,7 @@ function RootNavigator() {
           name="sheet"
           options={{
             presentation: "formSheet",
+              contentStyle: { backgroundColor: palette.sheet },
             sheetGrabberVisible: true,
             sheetCornerRadius: 24,
             sheetAllowedDetents: "fitToContents",
