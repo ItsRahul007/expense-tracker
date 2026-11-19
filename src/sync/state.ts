@@ -52,6 +52,9 @@ export type SyncStateValues = {
   auto_sync: boolean;
   dedupe_enabled: boolean;
   pending_review: PendingReview;
+  /** The Download/expense folder the user approved for CSV exports (an
+   *  Android content URI with a persistable grant). Device-local. */
+  export_dir_uri: string;
   /** yyyy-mm-dd of the last on-device snapshot (design §11.4). */
   last_snapshot_day: string;
 };

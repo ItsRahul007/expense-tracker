@@ -1,18 +1,16 @@
-import { File, Paths } from "expo-file-system";
 import { router } from "expo-router";
-import * as Sharing from "expo-sharing";
 import { useState } from "react";
 import { Platform, ScrollView, Text, View } from "react-native";
 
 import { AccountRow } from "@/components/account-row";
 import { Card, Chip, ScreenHeader, SectionTitle, SettingsRow } from "@/components/ui";
 import { backupSummary } from "@/lib/backup-status";
-import { formatISODate } from "@/lib/format";
+import { exportLedgerToDownloads } from "@/lib/export-ledger";
 import { showSheet } from "@/lib/sheet";
 import { useSession } from "@/providers/session-provider";
 import { useSync } from "@/providers/sync-provider";
+import { useDrizzle } from "@/queries/helper";
 import {
-  exportAllData,
   useCategories,
   useKnownMonths,
   useSetSetting,
@@ -46,6 +44,7 @@ export default function SettingsScreen() {
   const { data: allEntries } = useTransactions(null);
 
   const [exporting, setExporting] = useState(false);
+  const db = useDrizzle();
   const { session } = useSession();
   const { status: backup } = useSync();
   // Web has no Google sign-in (design §2); a dev-build "skip" has no account.
@@ -54,29 +53,13 @@ export default function SettingsScreen() {
   const exportLedger = async () => {
     setExporting(true);
     try {
-      const csv = await exportAllData();
-
-      // SDK 55's object-oriented file API. The legacy `FileSystem.*` helpers now
-      // throw unless imported from "expo-file-system/legacy".
-      const file = new File(Paths.document, `expenses-${formatISODate(Date.now())}.csv`);
-      if (file.exists) file.delete();
-      file.create();
-      file.write(csv);
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri, {
-          mimeType: "text/csv",
-          UTI: "public.comma-separated-values-text",
-          dialogTitle: "Export expenses and budgets",
-        });
-      } else {
-        showSheet("Saved", `Written to ${file.uri}`);
+      const result = await exportLedgerToDownloads(db);
+      if (result.ok) {
+        showSheet("Saved", `${result.fileName} is in ${result.location}.`);
+      } else if (result.reason === "failed") {
+        showSheet("Export failed", result.message);
       }
-    } catch (error) {
-      showSheet(
-        "Export failed",
-        error instanceof Error ? error.message : "The file could not be written.",
-      );
+      // Cancelled the folder picker: nothing to say.
     } finally {
       setExporting(false);
     }
