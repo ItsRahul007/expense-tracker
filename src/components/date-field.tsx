@@ -66,6 +66,11 @@ export function DateField({
         <Chip
           label={pickedOlderDay ? formatRelativeDay(value) : "Pick date"}
           selected={pickedOlderDay}
+          // Calendar + chevron: unlike the day chips this one opens a picker,
+          // and it must still look tappable once it's showing a picked date.
+          icon="calendar-outline"
+          trailingIcon="chevron-down"
+          accessibilityHint="Opens a calendar to choose another day"
           onPress={() => {
             Keyboard.dismiss();
             setShowCalendar(true);
