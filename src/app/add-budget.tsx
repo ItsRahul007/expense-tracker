@@ -1,7 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Text, TextInput, View } from "react-native";
 
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { useSheetScroll } from "@/hooks/use-sheet-scroll";
@@ -77,16 +76,8 @@ export default function AddBudgetScreen() {
   return (
     <View className="flex-1 bg-sheet dark:border-t dark:border-border">
       <View className="flex-row items-center justify-between px-4 pb-2 pt-4">
+        {/* No close button: drag down or back closes it, same as the add-expense sheet. */}
         <Text className="font-sans-bold text-title text-fg">New budget</Text>
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          hitSlop={10}
-          className="h-9 w-9 items-center justify-center rounded-full border border-border bg-card active:opacity-60"
-        >
-          <Ionicons name="close" size={18} color={palette.fg} />
-        </Pressable>
       </View>
 
       <View ref={keyboard.ref} onLayout={keyboard.onLayout} className="flex-1">
