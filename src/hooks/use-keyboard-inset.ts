@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Keyboard, type LayoutChangeEvent, Platform, StatusBar, type View } from "react-native";
 
 /**
- * Keyboard positions are in screen coordinates, but inside a native Android
- * form sheet `measureInWindow` measures from *below the status bar* — every
+ * Keyboard positions are in screen coordinates, but on Android
+ * `measureInWindow` measures from *below the status bar* (in form sheets and
+ * full screens alike) — every
  * measurement came back exactly one status-bar height (42.67 dp on the test
  * phone) too high. Without this the spacer is that much too short and Save
  * stays partly behind the keyboard.
@@ -21,6 +22,9 @@ const SHEET_Y_OFFSET = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0
  * keyboard's top edge — not the keyboard's full height: a sheet doesn't reach
  * every pixel the keyboard covers, and a full-height spacer let the content
  * scroll well past the Save button.
+ *
+ * Full screens (the expense detail screen) need it too: the app uses
+ * `softwareKeyboardLayoutMode: "pan"`, so the window never resizes there either.
  *
  * Attach `ref` and `onLayout` to a View that wraps the ScrollView exactly.
  */

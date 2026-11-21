@@ -2,12 +2,14 @@ import { router, useLocalSearchParams } from "expo-router";
 
 import { useDrizzle } from "@/queries/helper";
 import { mergedInto } from "@/sync/duplicates";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
 
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
-import { Button, Card, Chip, ScreenHeader } from "@/components/ui";
+import { DateField } from "@/components/date-field";
+import { Button, Card, ScreenHeader } from "@/components/ui";
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { usePalette } from "@/constants/palette";
 import {
   amountTextToMinor,
@@ -17,21 +19,8 @@ import {
   minorToAmountText,
   sanitizeAmountInput,
 } from "@/lib/format";
-import {
-  useCategories,
-  useTransaction,
-  useUpdateTransaction,
-} from "@/queries";
+import { useCategories, useTransaction, useUpdateTransaction } from "@/queries";
 import type { ID } from "@/types/domain";
-
-const DAY_CHOICES = 5;
-
-function dayStart(offset: number): number {
-  const d = new Date();
-  d.setDate(d.getDate() - offset);
-  d.setHours(12, 0, 0, 0);
-  return d.getTime();
-}
 
 export default function TransactionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -46,6 +35,7 @@ export default function TransactionScreen() {
   const [occurredAt, setOccurredAt] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const keyboard = useKeyboardInset();
 
   // Merged away as a duplicate by a sync while open? Move to the copy that
   // was kept rather than leaving an empty screen (design §12.9).
@@ -69,16 +59,6 @@ export default function TransactionScreen() {
 
   const amountMinor = amountText === null ? 0 : amountTextToMinor(amountText);
   const category = categories?.find((c) => c.id === categoryId);
-
-  /** The original date may predate the chip window, so it's offered as its own
-   *  option — otherwise opening an old expense would silently re-date it. */
-  const dayOptions = useMemo(() => {
-    const recent = Array.from({ length: DAY_CHOICES }, (_, offset) => dayStart(offset));
-    if (occurredAt !== null && occurredAt < dayStart(DAY_CHOICES - 1)) {
-      return [occurredAt, ...recent];
-    }
-    return recent;
-  }, [occurredAt]);
 
   const dirty =
     transaction !== null &&
@@ -126,98 +106,101 @@ export default function TransactionScreen() {
         onBack={() => router.back()}
       />
 
-      <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <Card className="py-5">
-          <Text className="font-sans-medium text-label text-muted">Amount</Text>
-          <View className="mt-1 flex-row items-center">
-            <Text className="font-sans-bold text-display text-muted">₹</Text>
+      {/* Same keyboard spacer as the add sheet: the app pans rather than
+          resizes for the keyboard, so without it the lower fields and the
+          buttons can't be scrolled into view while typing. */}
+      <View ref={keyboard.ref} onLayout={keyboard.onLayout} className="flex-1">
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Card className="py-5">
+            <Text className="font-sans-medium text-label text-muted">
+              Amount
+            </Text>
+            <View className="mt-1 flex-row items-center">
+              <Text className="font-sans-bold text-display text-muted">₹</Text>
+              <TextInput
+                value={formatAmountFieldValue(amountText)}
+                onChangeText={(next) =>
+                  setAmountText(sanitizeAmountInput(next))
+                }
+                keyboardType="decimal-pad"
+                textAlign="right"
+                className="font-sans-bold ml-2 flex-1 text-display text-fg"
+                // See the note in add.tsx — without minWidth: 0 the field cannot
+                // shrink below its content and overflows the card.
+                style={{ paddingVertical: 0, minWidth: 0 }}
+                accessibilityLabel="Amount in rupees"
+              />
+            </View>
+          </Card>
+
+          <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+            Category
+          </Text>
+          {creatingCategory ? (
+            <CategoryEditor
+              autoFocus
+              onCancel={() => setCreatingCategory(false)}
+              onCreated={(newId) => {
+                setCategoryId(newId);
+                setCreatingCategory(false);
+              }}
+            />
+          ) : (
+            <CategoryPicker
+              categories={categories ?? []}
+              selectedId={categoryId}
+              onSelect={setCategoryId}
+              onAddNew={() => setCreatingCategory(true)}
+            />
+          )}
+
+          <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+            Date
+          </Text>
+          {occurredAt !== null ? (
+            <DateField value={occurredAt} onChange={setOccurredAt} />
+          ) : null}
+
+          <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
+            Note
+          </Text>
+          <Card padded={false}>
             <TextInput
-              value={formatAmountFieldValue(amountText)}
-              onChangeText={(next) => setAmountText(sanitizeAmountInput(next))}
-              keyboardType="decimal-pad"
-              textAlign="right"
-              className="font-sans-bold ml-2 flex-1 text-display text-fg"
-              // See the note in add.tsx — without minWidth: 0 the field cannot
-              // shrink below its content and overflows the card.
-              style={{ paddingVertical: 0, minWidth: 0 }}
-              accessibilityLabel="Amount in rupees"
+              value={note}
+              onChangeText={setNote}
+              placeholder="Where was it? (optional)"
+              placeholderTextColor={palette.muted}
+              returnKeyType="done"
+              className="font-sans min-h-[52px] px-4 py-3 text-body text-fg"
+            />
+          </Card>
+
+          <View className="mt-8 gap-3">
+            <Button
+              label="Save changes"
+              onPress={save}
+              disabled={!dirty || amountMinor === 0}
+              loading={updateTransaction.isPending}
+            />
+            <Button
+              label="Delete expense"
+              variant="danger"
+              onPress={confirmDelete}
             />
           </View>
-        </Card>
 
-        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
-          Category
-        </Text>
-        {creatingCategory ? (
-          <CategoryEditor
-            autoFocus
-            onCancel={() => setCreatingCategory(false)}
-            onCreated={(newId) => {
-              setCategoryId(newId);
-              setCreatingCategory(false);
-            }}
-          />
-        ) : (
-          <CategoryPicker
-            categories={categories ?? []}
-            selectedId={categoryId}
-            onSelect={setCategoryId}
-            onAddNew={() => setCreatingCategory(true)}
-          />
-        )}
-
-        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
-          Date
-        </Text>
-        <View className="flex-row flex-wrap gap-2">
-          {dayOptions.map((ts) => (
-            <Chip
-              key={ts}
-              label={formatRelativeDay(ts)}
-              selected={ts === occurredAt}
-              onPress={() => setOccurredAt(ts)}
-            />
-          ))}
-        </View>
-
-        <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
-          Note
-        </Text>
-        <Card padded={false}>
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder="Where was it? (optional)"
-            placeholderTextColor={palette.muted}
-            returnKeyType="done"
-            className="font-sans min-h-[52px] px-4 py-3 text-body text-fg"
-          />
-        </Card>
-
-        <View className="mt-8 gap-3">
-          <Button
-            label="Save changes"
-            onPress={save}
-            disabled={!dirty || amountMinor === 0}
-            loading={updateTransaction.isPending}
-          />
-          <Button
-            label="Delete expense"
-            variant="danger"
-            onPress={confirmDelete}
-          />
-        </View>
-
-        {category ? (
-          <Text className="font-sans mt-5 px-1 text-center text-label text-muted">
-            Filed under {category.name}
-          </Text>
-        ) : null}
-      </ScrollView>
+          {category ? (
+            <Text className="font-sans mt-5 px-1 text-center text-label text-muted">
+              Filed under {category.name}
+            </Text>
+          ) : null}
+          <View style={{ height: keyboard.inset }} />
+        </ScrollView>
+      </View>
     </View>
   );
 }

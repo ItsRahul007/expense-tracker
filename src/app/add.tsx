@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,34 +13,18 @@ import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { useSheetScroll } from "@/hooks/use-sheet-scroll";
 import { CategoryEditor } from "@/components/category-editor";
 import { CategoryPicker } from "@/components/category-picker";
-import { Button, Card, Chip, DatePickerDialog } from "@/components/ui";
+import { DateField, dayStart } from "@/components/date-field";
+import { Button, Card } from "@/components/ui";
 import { usePalette } from "@/constants/palette";
 import {
   amountTextToMinor,
   formatAmountFieldValue,
   formatMoney,
-  formatRelativeDay,
   sanitizeAmountInput,
 } from "@/lib/format";
 import { currentMonth } from "@/lib/month";
 import { useAddTransaction, useCategories, useTransactions } from "@/queries";
 import type { ID } from "@/types/domain";
-
-/** How far back the quick day chips reach. "I forgot to log yesterday's auto"
- *  is the common case; anything older goes through the "Pick date" chip. */
-const DAY_CHOICES = 3;
-
-function atMidday(d: Date): number {
-  const copy = new Date(d);
-  copy.setHours(12, 0, 0, 0); // midday, so a DST shift can't move the calendar day
-  return copy.getTime();
-}
-
-function dayStart(offset: number): number {
-  const d = new Date();
-  d.setDate(d.getDate() - offset);
-  return atMidday(d);
-}
 
 export default function AddScreen() {
   const palette = usePalette();
@@ -52,7 +35,6 @@ export default function AddScreen() {
   const [amountText, setAmountText] = useState("");
   const [chosenCategory, setChosenCategory] = useState<ID | null>(null);
   const [occurredAt, setOccurredAt] = useState(() => dayStart(0));
-  const [showCalendar, setShowCalendar] = useState(false);
   const [note, setNote] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
   const keyboard = useKeyboardInset();
@@ -64,7 +46,6 @@ export default function AddScreen() {
     chosenCategory ?? recent?.[0]?.categoryId ?? categories?.[0]?.id ?? null;
 
   const amountMinor = amountTextToMinor(amountText);
-  const pickedOlderDay = occurredAt < dayStart(DAY_CHOICES - 1);
 
   const canSave = amountMinor > 0 && categoryId !== null;
 
@@ -172,38 +153,7 @@ export default function AddScreen() {
             <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
               Date
             </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {Array.from({ length: DAY_CHOICES }, (_, offset) => (
-                <Chip
-                  key={offset}
-                  label={formatRelativeDay(dayStart(offset))}
-                  selected={dayStart(offset) === occurredAt}
-                  onPress={() => {
-                    setOccurredAt(dayStart(offset));
-                    setShowCalendar(false);
-                  }}
-                />
-              ))}
-              <Chip
-                label={
-                  pickedOlderDay ? formatRelativeDay(occurredAt) : "Pick date"
-                }
-                selected={pickedOlderDay}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setShowCalendar(true);
-                }}
-              />
-            </View>
-            <DatePickerDialog
-              visible={showCalendar}
-              value={occurredAt}
-              onChange={(day) => {
-                setOccurredAt(atMidday(day));
-                setShowCalendar(false);
-              }}
-              onClose={() => setShowCalendar(false)}
-            />
+            <DateField value={occurredAt} onChange={setOccurredAt} />
 
             <Text className="font-sans-semibold mb-2 mt-6 px-1 text-headline text-fg">
               Note
