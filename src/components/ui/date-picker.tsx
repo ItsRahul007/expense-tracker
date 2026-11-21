@@ -55,7 +55,7 @@ export function DatePicker({
 
   return (
     <View>
-      <MonthSwitcher month={month} onChange={setMonth} />
+      <MonthSwitcher month={month} onChange={setMonth} pickable={false} />
 
       <View className="mt-3 flex-row">
         {WEEKDAYS.map((day, i) => (
