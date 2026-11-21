@@ -22,8 +22,9 @@ const TEMPLATES: [string, string[], number, number][] = [
   ["c-misc", ["Gift", "Haircut", "Donation", "Laundry"], 100, 1500],
 ];
 
-/** A full year, so the stats trend and month-by-month search have depth. */
-export const SAMPLE_MONTHS = 12;
+/** Two years, so the stats trend, year-over-year browsing and long budget
+ *  ranges all have depth. */
+export const SAMPLE_MONTHS = 24;
 
 function pick<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
@@ -85,11 +86,6 @@ export function generateSampleTransactions(
   return rows;
 }
 
-/** Categories that get sample budgets. Health and Other are left out on
- *  purpose: real users rarely budget everything, and the screen should be
- *  tried with partial coverage. */
-const BUDGETED = ["c-food", "c-groc", "c-trvl", "c-home", "c-shop", "c-entm"];
-
 /**
  * Limit as a multiple of what the batch actually spent. Below 1 ends over
  * budget, just above 1 lands in the "nearly there" zone, well above 1 is
@@ -97,43 +93,121 @@ const BUDGETED = ["c-food", "c-groc", "c-trvl", "c-home", "c-shop", "c-entm"];
  */
 const LIMIT_RATIOS = [0.8, 0.95, 1.05, 1.2, 1.5, 2];
 
+/** Categories with a fresh one-month budget each month (skipped ~1 month in 6). */
+const MONTHLY = ["c-trvl", "c-shop", "c-entm"];
+
+/** Rupees rounded to the nearest `step`, at least `floor`. */
+function limitFrom(rupees: number, step = 100, floor = 500): number {
+  return Math.max(floor, Math.round(rupees / step) * step) * 100;
+}
+
 /**
  * Budgets to go with `transactions` (normally the batch from
- * `generateSampleTransactions`). Each limit is derived from what that batch
- * spent in the category that month, times a random ratio from
- * `LIMIT_RATIOS`, rounded to ₹100. Each category is skipped in roughly one
- * month in six so months differ, and a category the batch spent nothing on
- * still gets a small limit so "₹0 of ₹X" shows up too.
+ * `generateSampleTransactions`), covering every kind of scope the app has so
+ * the Budgets screen and its scope labels can be tried properly:
  *
- * Limits only reflect this batch — adding sample data several times stacks the
- * spend but replaces the budgets, so repeated runs drift towards "over".
+ *  - Rent & Bills — one "every month" budget from the first month.
+ *  - Food — "every month", plus one-month overrides in a few months.
+ *  - Groceries — two date ranges (first half / second half), the later one
+ *    higher, like prices going up.
+ *  - Transport, Shopping, Entertainment — a one-month budget per month, each
+ *    skipped in roughly one month in six so months differ.
+ *  - Health and Other — none: real users rarely budget everything.
+ *
+ * Limits come from what this batch spent, times a ratio from `LIMIT_RATIOS`.
+ * Order matters: rows are saved in order and the latest save wins where
+ * budgets overlap (`src/lib/budget-scope.ts`), so the one-month overrides come
+ * after the "every month" budget they override.
+ *
+ * Repeated runs stack the spend but replace the budgets (same category and
+ * scope), so they drift towards "over".
  */
 export function generateSampleBudgets(
   transactions: NewTransaction[],
 ): NewBudget[] {
   const spent = new Map<string, number>();
-  const months = new Set<Month>();
+  const monthSet = new Set<Month>();
 
   for (const t of transactions) {
     const month = monthOf(t.occurredAt);
-    months.add(month);
+    monthSet.add(month);
     const key = `${month}|${t.categoryId}`;
     spent.set(key, (spent.get(key) ?? 0) + t.amountMinor);
   }
 
+  const months = [...monthSet].sort();
+  if (months.length === 0) return [];
+  const first = months[0];
+  const last = months[months.length - 1];
+
+  /** Average monthly spend in rupees over `span`. */
+  const average = (categoryId: string, span: Month[]) =>
+    span.reduce((sum, m) => sum + (spent.get(`${m}|${categoryId}`) ?? 0), 0) /
+    100 /
+    Math.max(1, span.length);
+
   const rows: NewBudget[] = [];
+
+  // Every month: comfortably above the usual rent + bills.
+  rows.push({
+    categoryId: "c-home",
+    startMonth: first,
+    endMonth: null,
+    limitMinor: limitFrom(average("c-home", months) * 1.1, 1000),
+  });
+
+  // Every month, near the average so some months go over.
+  rows.push({
+    categoryId: "c-food",
+    startMonth: first,
+    endMonth: null,
+    limitMinor: limitFrom(average("c-food", months)),
+  });
+
+  // Two ranges; with an odd count the first half is the shorter one.
+  if (months.length >= 2) {
+    const split = Math.floor(months.length / 2);
+    const early = months.slice(0, split);
+    const late = months.slice(split);
+    rows.push({
+      categoryId: "c-groc",
+      startMonth: first,
+      endMonth: early[early.length - 1],
+      limitMinor: limitFrom(average("c-groc", early) * pick(LIMIT_RATIOS)),
+    });
+    rows.push({
+      categoryId: "c-groc",
+      startMonth: late[0],
+      endMonth: last,
+      limitMinor: limitFrom(average("c-groc", late) * pick(LIMIT_RATIOS) * 1.15),
+    });
+  }
+
   for (const month of months) {
-    for (const categoryId of BUDGETED) {
+    for (const categoryId of MONTHLY) {
       if (Math.random() < 1 / 6) continue;
       const spentRupees = (spent.get(`${month}|${categoryId}`) ?? 0) / 100;
-      const limitRupees = Math.max(
-        500,
-        Math.round((spentRupees * pick(LIMIT_RATIOS)) / 100) * 100,
-      );
-      // One-month budgets: sample limits are derived from each month's own spend.
-      rows.push({ categoryId, startMonth: month, endMonth: month, limitMinor: limitRupees * 100 });
+      rows.push({
+        categoryId,
+        startMonth: month,
+        endMonth: month,
+        limitMinor: limitFrom(spentRupees * pick(LIMIT_RATIOS)),
+      });
     }
+  }
+
+  // Food overrides last, so they beat the "every month" budget: a bigger
+  // allowance for a festive month in each year, and the current month.
+  const festive = months.filter((m) => m.endsWith("-10"));
+  for (const month of new Set([...festive, last])) {
+    rows.push({
+      categoryId: "c-food",
+      startMonth: month,
+      endMonth: month,
+      limitMinor: limitFrom(average("c-food", months) * 1.5),
+    });
   }
 
   return rows;
 }
+

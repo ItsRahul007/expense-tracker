@@ -1,15 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { usePalette } from "@/constants/palette";
 import { currentMonth, monthLabel, shiftMonth, type Month } from "@/lib/month";
 
-/** ‹ August 2026 › — a pill-shaped month pager. */
+import { MonthPickerDialog } from "./month-picker";
+
+/** ‹ August 2026 › — a pill-shaped month pager. Tapping the month name opens
+ *  a month picker for jumping further than one step at a time. */
 export function MonthSwitcher({
   month,
   onChange,
   earliest,
   allowFuture = false,
+  pickable = true,
 }: {
   month: Month;
   onChange: (month: Month) => void;
@@ -18,8 +23,12 @@ export function MonthSwitcher({
   /** Page past the current month — for planning, e.g. a budget's date range.
    *  Off by default, since an expense can't be in a month that hasn't started. */
   allowFuture?: boolean;
+  /** Tap the label to open the month picker. Off where the switcher already
+   *  sits inside a dialog (the date picker's calendar header). */
+  pickable?: boolean;
 }) {
   const palette = usePalette();
+  const [picking, setPicking] = useState(false);
   const previous = shiftMonth(month, -1);
   const next = shiftMonth(month, 1);
 
@@ -36,7 +45,21 @@ export function MonthSwitcher({
         disabled={!canGoBack}
         onPress={() => onChange(previous)}
       />
-      <Text className="font-sans-semibold text-body text-fg">{monthLabel(month)}</Text>
+      {pickable ? (
+        <Pressable
+          onPress={() => setPicking(true)}
+          accessibilityRole="button"
+          accessibilityLabel={monthLabel(month)}
+          accessibilityHint="Opens a month picker"
+          hitSlop={6}
+          className="h-8 flex-row items-center gap-1.5 rounded-full px-3 active:opacity-50"
+        >
+          <Text className="font-sans-semibold text-body text-fg">{monthLabel(month)}</Text>
+          <Ionicons name="chevron-down" size={14} color={palette.muted} />
+        </Pressable>
+      ) : (
+        <Text className="font-sans-semibold text-body text-fg">{monthLabel(month)}</Text>
+      )}
       <Arrow
         icon="chevron-forward"
         label="Next month"
@@ -44,6 +67,19 @@ export function MonthSwitcher({
         disabled={!canGoForward}
         onPress={() => onChange(next)}
       />
+      {pickable ? (
+        <MonthPickerDialog
+          visible={picking}
+          value={month}
+          earliest={earliest}
+          allowFuture={allowFuture}
+          onChange={(picked) => {
+            setPicking(false);
+            if (picked !== month) onChange(picked);
+          }}
+          onClose={() => setPicking(false)}
+        />
+      ) : null}
     </View>
   );
 }

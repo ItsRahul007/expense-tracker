@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import {
   Card,
@@ -126,6 +126,7 @@ export default function StatsScreen() {
                   points={trend ?? []}
                   peak={trendPeak}
                   activeMonth={month}
+                  onSelect={setMonth}
                 />
               </Card>
             </View>
@@ -139,25 +140,42 @@ export default function StatsScreen() {
 /**
  * Bars from a shared baseline. Plain Views rather than SVG — six rectangles
  * don't justify a rendering dependency, and Views inherit the theme tokens.
+ *
+ * Each column (amount, bar and month label) is one tap target that switches
+ * the screen to that month, same as the month switcher above.
  */
 function TrendChart({
   points,
   peak,
   activeMonth,
+  onSelect,
 }: {
   points: { month: Month; totalMinor: number }[];
   peak: number;
   activeMonth: Month;
+  onSelect: (month: Month) => void;
 }) {
   const HEIGHT = 110;
 
   return (
-    <View>
-      <View className="flex-row items-end justify-between" style={{ height: HEIGHT }}>
-        {points.map((point) => {
-          const active = point.month === activeMonth;
-          return (
-            <View key={point.month} className="flex-1 items-center justify-end px-1">
+    <View className="flex-row">
+      {points.map((point) => {
+        const active = point.month === activeMonth;
+        return (
+          <Pressable
+            key={point.month}
+            onPress={() => onSelect(point.month)}
+            disabled={active}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`${monthShort(point.month)}, ${formatMoney(point.totalMinor)}`}
+            accessibilityHint={active ? undefined : "Shows this month"}
+            className="flex-1 active:opacity-60"
+          >
+            <View
+              className="items-center justify-end px-1"
+              style={{ height: HEIGHT }}
+            >
               <Text
                 className={`font-sans-medium pb-1.5 text-caption ${
                   active ? "text-fg" : "text-muted"
@@ -177,23 +195,16 @@ function TrendChart({
                 }}
               />
             </View>
-          );
-        })}
-      </View>
-
-      <View className="mt-2 flex-row justify-between">
-        {points.map((point) => (
-          <View key={point.month} className="flex-1 items-center">
             <Text
-              className={`font-sans-medium text-caption ${
-                point.month === activeMonth ? "text-fg" : "text-muted"
+              className={`font-sans-medium mt-2 text-center text-caption ${
+                active ? "text-fg" : "text-muted"
               }`}
             >
               {monthShort(point.month)}
             </Text>
-          </View>
-        ))}
-      </View>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
